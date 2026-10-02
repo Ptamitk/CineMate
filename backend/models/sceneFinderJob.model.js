@@ -88,6 +88,18 @@ const sceneFinderJobSchema = new mongoose.Schema(
   }
 );
 
+sceneFinderJobSchema.index(
+  { user: 1, reelUrl: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      status: {
+        $in: ["pending", "processing"],
+      },
+    },
+  }
+);
+
 const SceneFinderJob = mongoose.model(
   "SceneFinderJob",
   sceneFinderJobSchema
