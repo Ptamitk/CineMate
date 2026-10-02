@@ -156,6 +156,12 @@ const SceneFinder = () => {
       telegramSceneResult.jobId || null
     );
 
+    if (telegramSceneResult.jobId) {
+      localStorage.removeItem(
+        "cinemate_scene_finder_job"
+      );
+    }
+
     setError(
       telegramSceneResult.error || ""
     );
@@ -179,7 +185,10 @@ const SceneFinder = () => {
           "Scene Identified",
 
         year:
-          sceneResult.year || "—",
+          sceneResult.year ||
+          (sceneResult.releaseDate
+            ? String(sceneResult.releaseDate).slice(0, 4)
+            : "—"),
 
         rating:
           sceneResult.rating || "—",
@@ -358,7 +367,10 @@ const SceneFinder = () => {
             "Scene Identified",
 
           year:
-            job.result?.year || "—",
+            job.result?.year ||
+            (job.result?.releaseDate
+              ? String(job.result.releaseDate).slice(0, 4)
+              : "—"),
 
           rating:
             job.result?.rating || "—",
