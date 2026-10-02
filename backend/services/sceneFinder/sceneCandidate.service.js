@@ -685,7 +685,7 @@ const findSceneCandidates = async ({
     }
 
     allCandidates.push(
-      ...results.map(toCandidate)
+      ...results.map(toCandidate).slice(0, 20)
     );
   }
 
