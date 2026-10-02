@@ -2,6 +2,7 @@ const { analyzeSceneSignals } = require("./sceneSignals.service");
 const { findSceneCandidates } = require("./sceneCandidate.service");
 const { matchSceneCandidates } = require("./sceneMatcher.service");
 const { analyzeVisualFrames } = require("./visualAnalysis.service");
+const { selectUsefulFrames } = require("./frameSelection.service");
 
 const analyzeScene = async ({
   frameFiles = [],
@@ -24,9 +25,14 @@ const analyzeScene = async ({
   console.log("SPEECH TEXT:", signals.speech.text);
   console.log("REEL CAPTION:", caption);
 
+  const visualFrames = selectUsefulFrames({
+    frameFiles,
+    maxFrames: 12,
+  });
+
   const visualAnalysis =
     await analyzeVisualFrames({
-      frameFiles,
+      frameFiles: visualFrames,
     });
 
   console.log(
