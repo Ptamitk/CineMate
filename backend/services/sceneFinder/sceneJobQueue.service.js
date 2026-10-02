@@ -1,4 +1,4 @@
-const SceneFinderJob = require("../models/sceneFinderJob.model");
+const SceneFinderJob = require("../../models/sceneFinderJob.model");
 
 const {
   processSceneFinderJob,
