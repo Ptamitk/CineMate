@@ -943,11 +943,57 @@ const matchSceneCandidates = ({
           signal,
         };
       })
-      .sort(
-        (a, b) =>
+      .sort((a, b) => {
+        const scoreDifference =
           b.signal.finalScore -
-          a.signal.finalScore
-      );
+          a.signal.finalScore;
+
+        if (scoreDifference !== 0) {
+          return scoreDifference;
+        }
+
+        const evidenceRank = (signal) => {
+          if (
+            signal.evidenceType === "caption-exact"
+          ) {
+            return 4;
+          }
+
+          if (
+            signal.evidenceType === "text-multi-signal"
+          ) {
+            return 3;
+          }
+
+          if (
+            signal.evidenceType === "text" ||
+            signal.evidenceType === "caption"
+          ) {
+            return 2;
+          }
+
+          if (
+            signal.evidenceType === "visual"
+          ) {
+            return 1;
+          }
+
+          return 0;
+        };
+
+        const evidenceDifference =
+          evidenceRank(b.signal) -
+          evidenceRank(a.signal);
+
+        if (evidenceDifference !== 0) {
+          return evidenceDifference;
+        }
+
+        return (
+          Number(b.candidate.popularity || 0) -
+          Number(a.candidate.popularity || 0)
+        );
+      });
 
   const best =
     scoredCandidates[0];
