@@ -340,6 +340,30 @@ const getVisualSignals = (visualAnalysis) => {
     });
 };
 
+const getVisualSearchQueries = (visualSignals = []) => {
+  const queries = [];
+
+  for (const item of visualSignals) {
+    const description = normalizeText(item?.description || "");
+
+    if (
+      description.length < 15 ||
+      description.length > 140 ||
+      /^(a|an|the) (photo|picture|image|close up|closeup)\\b/i.test(description)
+    ) {
+      continue;
+    }
+
+    const words = description.split(/\\s+/).filter(Boolean);
+
+    if (words.length >= 3 && words.length <= 18) {
+      queries.push(description);
+    }
+  }
+
+  return unique(queries).slice(0, 2);
+};
+
 const tmdbRequest = async (
   path,
   params = {}
@@ -580,9 +604,18 @@ const findSceneCandidates = async ({
     queries
   );
 
-  if (!queries.length) {
+  const visualQueries = queries.length
+    ? []
+    : getVisualSearchQueries(visualSignals);
+
+  const searchQueries = unique([
+    ...queries,
+    ...visualQueries,
+  ]).slice(0, 5);
+
+  if (!searchQueries.length) {
     console.log(
-      "No reliable text-based scene queries found."
+      "No reliable scene queries found from text or vision."
     );
 
     return {
@@ -597,7 +630,7 @@ const findSceneCandidates = async ({
 
   const allCandidates = [];
 
-  for (const query of queries) {
+  for (const query of searchQueries) {
     const year =
       captionInfo.title &&
       normalizeTitle(query) ===
