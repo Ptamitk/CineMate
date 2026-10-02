@@ -24,7 +24,10 @@ const postShareRoutes =
 const telegramRoutes = require("./routes/telegram.routes");
 const telegramAccountRoutes = require("./routes/telegramAccount.routes");
 const telegramEventsRoutes = require("./routes/telegramEvents.routes");
-const { recoverSceneFinderJobs } = require("./services/sceneFinder/sceneJobQueue.service");
+const {
+  recoverSceneFinderJobs,
+  startSceneFinderQueueRecovery,
+} = require("./services/sceneFinder/sceneJobQueue.service");
 const {
   cleanupStaleSceneTempFiles,
 } = require("./services/sceneFinder/sceneCleanup.service");
@@ -83,6 +86,7 @@ const startServer = async () => {
 
   await cleanupStaleSceneTempFiles();
   await recoverSceneFinderJobs();
+  startSceneFinderQueueRecovery();
 
   const telegramBot =
   await getTelegramBotInfo();
