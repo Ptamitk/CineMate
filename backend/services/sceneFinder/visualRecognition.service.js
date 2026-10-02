@@ -91,9 +91,8 @@ await loadVisionModel();
 const results =
 await model(
 framePath,
-{
-candidate_labels:
 candidateLabels,
+{
 hypothesis_template:
 "A scene from the movie or TV show {}",
 }
