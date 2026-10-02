@@ -424,6 +424,7 @@ const getBestTextSignal = (
 const getVisualSignal = (
   visualSignals = [],
   visualRecognitionMatches = [],
+  artworkSimilarityMatches = [],
   title = "",
   originalTitle = ""
 ) => {
@@ -531,21 +532,85 @@ const getVisualSignal = (
     }
   }
 
+  let artworkAverage = 0;
+  let artworkMax = 0;
+  let artworkMargin = 0;
+  let artworkFramesMatched = 0;
+
+  if (Array.isArray(artworkSimilarityMatches)) {
+    const titleSet = new Set([
+      normalizeTitle(title),
+      normalizeTitle(originalTitle),
+    ].filter(Boolean));
+
+    const matched = artworkSimilarityMatches.find(
+      (item) =>
+        titleSet.has(
+          normalizeTitle(item?.label || "")
+        )
+    );
+
+    if (matched) {
+      artworkAverage = Number(
+        matched.imageSimilarity || 0
+      );
+      artworkMax = Number(
+        matched.imageMaxSimilarity || 0
+      );
+      artworkFramesMatched = Number(
+        matched.imageFramesMatched || 0
+      );
+
+      const competitors =
+        artworkSimilarityMatches
+          .filter(
+            (item) =>
+              !titleSet.has(
+                normalizeTitle(item?.label || "")
+              )
+          )
+          .map((item) =>
+            Number(
+              item?.imageSimilarity || 0
+            )
+          );
+
+      artworkMargin = Math.max(
+        0,
+        artworkAverage -
+          (competitors.length
+            ? Math.max(...competitors)
+            : 0)
+      );
+    }
+  }
+
   const clipSimilarity =
     clipAverage > 0 || clipMax > 0
       ? clipAverage * 0.7 + clipMax * 0.3
       : 0;
 
+  const artworkSimilarity =
+    artworkAverage > 0 || artworkMax > 0
+      ? artworkAverage * 0.7 +
+        artworkMax * 0.3
+      : 0;
+
   return {
     similarity: Math.max(
       bestSimilarity,
-      clipSimilarity
+      clipSimilarity,
+      artworkSimilarity
     ),
     overlap: bestOverlap,
     clipAverage,
     clipMax,
     clipMargin,
     clipFramesMatched,
+    artworkAverage,
+    artworkMax,
+    artworkMargin,
+    artworkFramesMatched,
   };
 };
 
@@ -558,6 +623,7 @@ const calculateCandidateScore = ({
   speechText = "",
   visualSignals = [],
   visualRecognitionMatches = [],
+  artworkSimilarityMatches = [],
 }) => {
   const title = candidate.title || "";
   const originalTitle =
@@ -591,6 +657,7 @@ const calculateCandidateScore = ({
   const visualSignal = getVisualSignal(
     visualSignals,
     visualRecognitionMatches,
+    artworkSimilarityMatches,
     title,
     originalTitle
   );
@@ -699,11 +766,20 @@ const calculateCandidateScore = ({
      * the supplied candidate set. Require repeated frame agreement
      * plus a meaningful average and margin before accepting it.
      */
+    const hasStrongArtworkVisual =
+      visualSignal.artworkAverage >= 0.55 &&
+      visualSignal.artworkMax >= 0.65 &&
+      visualSignal.artworkMargin >= 0.06 &&
+      visualSignal.artworkFramesMatched >= 2;
+
     const hasStrongVisual =
-      visualSignal.clipAverage >= 0.34 &&
-      visualSignal.clipMax >= 0.60 &&
-      visualSignal.clipMargin >= 0.12 &&
-      visualSignal.clipFramesMatched >= 3;
+      (
+        visualSignal.clipAverage >= 0.34 &&
+        visualSignal.clipMax >= 0.60 &&
+        visualSignal.clipMargin >= 0.12 &&
+        visualSignal.clipFramesMatched >= 3
+      ) ||
+      hasStrongArtworkVisual;
 
     finalScore =
       ocrScore * 0.5 +
