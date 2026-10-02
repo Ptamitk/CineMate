@@ -284,6 +284,7 @@ const processSceneFinderJob = async (
           processingJob.result || null,
         error:
           processingJob.error || "",
+        updatedAt: processingJob.updatedAt,
       }
     );
 
@@ -426,6 +427,7 @@ const processSceneFinderJob = async (
             updatedJob.result,
           error:
             updatedJob.error,
+          updatedAt: updatedJob.updatedAt
         }
       );
 
@@ -492,6 +494,7 @@ const processSceneFinderJob = async (
           updatedJob.result,
         error:
           updatedJob.error,
+          updatedAt: updatedJob.updatedAt
       }
     );
 
@@ -538,6 +541,7 @@ const processSceneFinderJob = async (
             failedJob.result || null,
           error:
             failedJob.error,
+          updatedAt: failedJob.updatedAt
         }
       );
 
