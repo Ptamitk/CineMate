@@ -889,19 +889,32 @@ const findSceneCandidates = async ({
    * The pool is intentionally India-aware because Scene Finder is
    * expected to receive Indian reels as well as global content.
    */
-  if (!candidates.length) {
+  /*
+   * Low-confidence discovery fallback:
+   * A noisy OCR token can return a handful of unrelated TMDB titles.
+   * Do not let CLIP choose among only those few titles, because that
+   * effectively forces a false visual winner. Keep a small text-search
+   * slice, then add the broader TMDB pool so visual recognition has
+   * enough real titles to compare against.
+   */
+  if (candidates.length < 10) {
     console.log(
-      "No text/visual-search candidates. Building TMDB visual candidate pool..."
+      "Small candidate set detected. Expanding TMDB visual candidate pool..."
     );
 
     try {
-      candidates =
+      const fallbackCandidates =
         await discoverFallbackCandidates({
           captionType: captionInfo.type,
         });
 
+      candidates = deduplicateCandidates([
+        ...candidates.slice(0, 20),
+        ...fallbackCandidates,
+      ]).slice(0, 120);
+
       console.log(
-        "TMDB visual candidate pool:",
+        "Expanded TMDB visual candidate pool:",
         candidates.length
       );
     } catch (error) {
