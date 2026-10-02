@@ -122,7 +122,7 @@ const sendTelegramFinalResult = async (
     ) {
       const confidence =
         typeof result.confidence === "number"
-          ? `\nConfidence: ${Math.round(result.confidence * 100)}%`
+          ? `\nConfidence: ${Math.round(result.confidence)}%`
           : "";
 
       message =
