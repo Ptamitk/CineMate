@@ -2,6 +2,7 @@ const multer = require("multer");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
+const crypto = require("crypto");
 
 const uploadDirectory = path.join(
 os.tmpdir(),
@@ -24,7 +25,8 @@ const extension =
 path.extname(file.originalname);
 
 
-const filename = `scene-${Date.now()}${extension}`;
+const safeExtension = extension.toLowerCase() || ".mp4";
+const filename = `scene-${Date.now()}-${crypto.randomUUID()}${safeExtension}`;
 
 cb(null, filename);
 
