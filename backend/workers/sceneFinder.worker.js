@@ -237,9 +237,13 @@ const processSceneFinderJob = async (
   let downloadedMediaDirectory = null;
   let heartbeatTimer = null;
 
+  let claimCompleted = false;
+
   try {
     const processingJob =
       await claimSceneFinderJob(jobId);
+
+    claimCompleted = true;
 
     if (!processingJob) {
       console.log(
@@ -505,6 +509,10 @@ const processSceneFinderJob = async (
       updatedJob.error
     );
   } catch (error) {
+    if (!claimCompleted) {
+      throw error;
+    }
+
     console.error(
       "Scene Finder Worker Error:",
       error.message
