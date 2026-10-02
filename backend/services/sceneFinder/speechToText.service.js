@@ -121,6 +121,14 @@ sampleRate,
 };
 };
 
+const MAX_TRANSCRIPTION_CHARS = Math.max(
+  200,
+  Number(
+    process.env.SCENE_FINDER_MAX_TRANSCRIPTION_CHARS ||
+      12000
+  )
+);
+
 const transcribeAudio = async (
 audioPath
 ) => {
@@ -160,7 +168,10 @@ sampleRate,
 
 return {
 text:
-result.text?.trim() || "",
+(result.text?.trim() || "").slice(
+  0,
+  MAX_TRANSCRIPTION_CHARS
+),
 };
 };
 
