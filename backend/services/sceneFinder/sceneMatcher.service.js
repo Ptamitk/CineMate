@@ -26,6 +26,93 @@ const getYear = (date = "") => {
   return match ? Number(match[1]) : null;
 };
 
+const COMMON_SCENE_WORDS = new Set([
+  "man", "woman", "boy", "girl", "person", "people",
+  "love", "life", "time", "day", "night", "world",
+  "home", "house", "family", "friend", "friends",
+  "good", "bad", "best", "new", "old", "one", "two",
+  "three", "place", "thing", "things", "way", "work",
+  "story", "movie", "film", "show", "series", "scene",
+]);
+
+const isDistinctiveTitle = (value = "") => {
+  const tokens = tokenize(value);
+
+  if (tokens.length >= 2) {
+    return true;
+  }
+
+  if (tokens.length !== 1) {
+    return false;
+  }
+
+  const token = tokens[0];
+
+  return (
+    token.length >= 4 &&
+    !COMMON_SCENE_WORDS.has(token)
+  );
+};
+
+const areIndependentTextSignals = (
+  firstSource = "",
+  secondSource = ""
+) => {
+  const first = normalizeText(firstSource);
+  const second = normalizeText(secondSource);
+
+  if (!first || !second) {
+    return false;
+  }
+
+  if (first === second) {
+    return false;
+  }
+
+  const firstTokens = new Set(
+    first.split(/\s+/).filter(Boolean)
+  );
+  const secondTokens = new Set(
+    second.split(/\s+/).filter(Boolean)
+  );
+
+  const common = [...firstTokens].filter((token) =>
+    secondTokens.has(token)
+  ).length;
+
+  const union = new Set([
+    ...firstTokens,
+    ...secondTokens,
+  ]).size;
+
+  const jaccard = union
+    ? common / union
+    : 0;
+
+  if (jaccard >= 0.8) {
+    return false;
+  }
+
+  const shorter = Math.min(
+    first.length,
+    second.length
+  );
+  const longer = Math.max(
+    first.length,
+    second.length
+  );
+
+  if (
+    longer > 0 &&
+    shorter / longer >= 0.8 &&
+    (first.includes(second) || second.includes(first))
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
 const PROMO_TITLE_PATTERNS = [
   /^only in theaters?$/i,
   /^now playing$/i,
@@ -83,7 +170,7 @@ const getTitleSimilarity = (a = "", b = "") => {
   }
 
   if (first === second) {
-    return 1;
+    return isDistinctiveTitle(first) ? 1 : 0;
   }
 
   if (
@@ -142,7 +229,12 @@ const getExactTitleScore = (
     return 0;
   }
 
-  return first === second ? 1 : 0;
+  return (
+    first === second &&
+    isDistinctiveTitle(second)
+  )
+    ? 1
+    : 0;
 };
 
 const getWordOverlap = (
@@ -382,6 +474,7 @@ const getVisualSignal = (
   let clipAverage = 0;
   let clipMax = 0;
   let clipMargin = 0;
+  let clipFramesMatched = 0;
 
   if (Array.isArray(visualRecognitionMatches)) {
     const titleSet = new Set([
@@ -402,6 +495,9 @@ const getVisualSignal = (
       );
       clipMax = Number(
         matched.maxScore || 0
+      );
+      clipFramesMatched = Number(
+        matched.framesMatched || 0
       );
 
       const competitors =
@@ -442,6 +538,7 @@ const getVisualSignal = (
     clipAverage,
     clipMax,
     clipMargin,
+    clipFramesMatched,
   };
 };
 
@@ -581,6 +678,7 @@ const calculateCandidateScore = ({
 
     const hasStrongOcr =
       ocrSignal.exact === 1 ||
+
       (
         ocrSignal.similarity >= 0.78 &&
         ocrSignal.overlap >= 0.5
@@ -596,7 +694,14 @@ const calculateCandidateScore = ({
     const hasStrongVisual =
       visualSignal.clipMax >= 0.45 &&
       visualSignal.clipAverage >= 0.25 &&
-      visualSignal.clipMargin >= 0.08;
+      visualSignal.clipMargin >= 0.08 &&
+      (
+        visualSignal.clipFramesMatched >= 2 ||
+        (
+          visualSignal.clipMax >= 0.65 &&
+          visualSignal.clipMargin >= 0.12
+        )
+      );
 
     finalScore =
       ocrScore * 0.5 +
@@ -617,7 +722,16 @@ const calculateCandidateScore = ({
       Number(hasStrongVisual);
 
     const independentTextSignals =
-      Number(hasStrongOcr) +
+      Number(
+        hasStrongOcr &&
+        (
+          !hasStrongSpeech ||
+          areIndependentTextSignals(
+            ocrSignal.source,
+            speechSignal.source
+          )
+        )
+      ) +
       Number(hasStrongSpeech);
 
     if (strongEvidenceCount === 0) {
