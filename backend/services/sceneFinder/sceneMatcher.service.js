@@ -602,7 +602,7 @@ const calculateCandidateScore = ({
     candidate.contentType
   );
 
-  let finalScore = 0;
+  let finalScore;
   let evidenceType = "none";
 
   const strongEnoughCaption =
