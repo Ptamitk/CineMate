@@ -69,6 +69,36 @@ const SceneFinder = () => {
   };
 
   useEffect(() => {
+    const storedJobId = localStorage.getItem(
+      "cinemate_scene_finder_job"
+    );
+
+    const storedAuth = localStorage.getItem(
+      "cinemate_auth"
+    );
+
+    let parsedAuth = null;
+
+    try {
+      parsedAuth = storedAuth
+        ? JSON.parse(storedAuth)
+        : null;
+    } catch {
+      parsedAuth = null;
+    }
+
+    if (
+      storedJobId &&
+      parsedAuth?.token
+    ) {
+      setJobId(storedJobId);
+      setIsSearching(true);
+      startPolling(
+        storedJobId,
+        parsedAuth.token
+      );
+    }
+
     return () => {
       stopPolling();
     };
@@ -91,9 +121,18 @@ const SceneFinder = () => {
 
       setIsSearching(true);
       setAnalysisStep(0);
-      setJobId(
-        telegramSceneResult.jobId || null
-      );
+      const telegramJobId =
+        telegramSceneResult.jobId || null;
+
+      setJobId(telegramJobId);
+
+      if (telegramJobId) {
+        localStorage.setItem(
+          "cinemate_scene_finder_job",
+          telegramJobId
+        );
+      }
+
       setResult(null);
       setError("");
 
@@ -280,6 +319,9 @@ const SceneFinder = () => {
 
       if (job.status === "completed") {
         stopPolling();
+        localStorage.removeItem(
+          "cinemate_scene_finder_job"
+        );
 
         setIsSearching(false);
 
@@ -329,6 +371,9 @@ const SceneFinder = () => {
 
       if (job.status === "failed") {
         stopPolling();
+        localStorage.removeItem(
+          "cinemate_scene_finder_job"
+        );
 
         setIsSearching(false);
 
@@ -347,14 +392,12 @@ const SceneFinder = () => {
         error
       );
 
-      stopPolling();
-
-      setIsSearching(false);
-
-      setError(
-        error.message ||
-          "Something went wrong while checking the analysis."
-      );
+      /*
+       * A temporary network/server error must not
+       * kill an active Scene Finder job.
+       * The next polling attempt will retry it.
+       */
+      setIsSearching(true);
     }
   };
 
@@ -483,6 +526,11 @@ const SceneFinder = () => {
       }
 
       setJobId(newJobId);
+
+      localStorage.setItem(
+        "cinemate_scene_finder_job",
+        newJobId
+      );
 
       startPolling(
         newJobId,
