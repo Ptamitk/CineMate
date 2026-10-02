@@ -349,12 +349,12 @@ const getVisualSearchQueries = (visualSignals = []) => {
     if (
       description.length < 15 ||
       description.length > 140 ||
-      /^(a|an|the) (photo|picture|image|close up|closeup)\\b/i.test(description)
+      /^(a|an|the) (photo|picture|image|close up|closeup)\b/i.test(description)
     ) {
       continue;
     }
 
-    const words = description.split(/\\s+/).filter(Boolean);
+    const words = description.split(/\s+/).filter(Boolean);
 
     if (words.length >= 3 && words.length <= 18) {
       queries.push(description);
