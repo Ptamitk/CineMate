@@ -410,7 +410,8 @@ const tmdbRequest = async (
   } catch (error) {
     if (error?.name === "AbortError") {
       throw new Error(
-        `TMDB request timed out after ${timeoutMs}ms.`
+        `TMDB request timed out after ${timeoutMs}ms.`,
+        { cause: error }
       );
     }
 
