@@ -21,13 +21,13 @@ return transcriberPromise;
 }
 
 console.log(
-"Loading Whisper speech-to-text model..."
+`Loading Whisper speech-to-text model: ${process.env.SCENE_FINDER_WHISPER_MODEL || "Xenova/whisper-tiny"}`
 );
 
 transcriberPromise =
 pipeline(
 "automatic-speech-recognition",
-"Xenova/whisper-tiny.en"
+process.env.SCENE_FINDER_WHISPER_MODEL || "Xenova/whisper-tiny"
 )
 .then((model) => {
 transcriber = model;
