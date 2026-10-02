@@ -9,52 +9,51 @@ const OCR_TIMEOUT_MS = Math.max(
 );
 
 const extractTextFromImage = async (
-imagePath
+  imagePath
 ) => {
-if (!imagePath) {
-throw new Error(
-"Image path is required for OCR."
-);
-}
+  if (!imagePath) {
+    throw new Error(
+      "Image path is required for OCR."
+    );
+  }
 
-const result =
-await Promise.race([
-  Tesseract.recognize(
-    imagePath,
-"eng",
-{
-logger: (info) => {
-if (
-info.status ===
-"recognizing text"
-) {
-console.log(
-`OCR Progress: ${Math.round(
+  const result = await Promise.race([
+    Tesseract.recognize(
+      imagePath,
+      "eng",
+      {
+        logger: (info) => {
+          if (
+            info.status ===
+            "recognizing text"
+          ) {
+            console.log(
+              `OCR Progress: ${Math.round(
                 (info.progress || 0) * 100
               )}%`
-);
-}
-},
-  ),
-  new Promise((_, reject) => {
-    setTimeout(() => {
-      reject(
-        new Error(
-          `OCR timed out after ${OCR_TIMEOUT_MS} ms.`
-        )
-      );
-    }, OCR_TIMEOUT_MS);
-  }),
-]);
+            );
+          }
+        },
+      }
+    ),
+    new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(
+          new Error(
+            `OCR timed out after ${OCR_TIMEOUT_MS} ms.`
+          )
+        );
+      }, OCR_TIMEOUT_MS);
+    }),
+  ]);
 
-return {
-text:
-result.data.text?.trim() || "",
-confidence:
-result.data.confidence || 0,
-};
+  return {
+    text: result.data.text?.trim() || "",
+    confidence:
+      result.data.confidence || 0,
+  };
 };
 
 module.exports = {
-extractTextFromImage,
+  extractTextFromImage,
 };
