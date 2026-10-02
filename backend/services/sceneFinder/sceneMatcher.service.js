@@ -308,52 +308,105 @@ const getBestTextSignal = (
 
 const getVisualSignal = (
   visualSignals = [],
+  visualRecognitionMatches = [],
   title = "",
   originalTitle = ""
 ) => {
-  if (
-    !Array.isArray(visualSignals) ||
-    !visualSignals.length
-  ) {
-    return {
-      similarity: 0,
-      overlap: 0,
-    };
-  }
-
   let bestSimilarity = 0;
   let bestOverlap = 0;
 
-  for (const item of visualSignals) {
-    const description =
-      typeof item === "string"
-        ? item
-        : item?.description || "";
+  if (Array.isArray(visualSignals)) {
+    for (const item of visualSignals) {
+      const description =
+        typeof item === "string"
+          ? item
+          : item?.description || "";
 
-    if (!description) {
-      continue;
+      if (!description) {
+        continue;
+      }
+
+      const signal = getTextSignal(
+        description,
+        title,
+        originalTitle
+      );
+
+      bestSimilarity = Math.max(
+        bestSimilarity,
+        signal.similarity
+      );
+
+      bestOverlap = Math.max(
+        bestOverlap,
+        signal.overlap
+      );
     }
-
-    const signal = getTextSignal(
-      description,
-      title,
-      originalTitle
-    );
-
-    bestSimilarity = Math.max(
-      bestSimilarity,
-      signal.similarity
-    );
-
-    bestOverlap = Math.max(
-      bestOverlap,
-      signal.overlap
-    );
   }
 
+  let clipAverage = 0;
+  let clipMax = 0;
+  let clipMargin = 0;
+
+  if (Array.isArray(visualRecognitionMatches)) {
+    const titleSet = new Set([
+      normalizeTitle(title),
+      normalizeTitle(originalTitle),
+    ].filter(Boolean));
+
+    const matched = visualRecognitionMatches.find(
+      (item) =>
+        titleSet.has(
+          normalizeTitle(item?.label || "")
+        )
+    );
+
+    if (matched) {
+      clipAverage = Number(
+        matched.averageScore || 0
+      );
+      clipMax = Number(
+        matched.maxScore || 0
+      );
+
+      const competitors =
+        visualRecognitionMatches
+          .filter(
+            (item) =>
+              !titleSet.has(
+                normalizeTitle(item?.label || "")
+              )
+          )
+          .map((item) =>
+            Number(item?.averageScore || 0)
+          );
+
+      const bestCompetitor =
+        competitors.length
+          ? Math.max(...competitors)
+          : 0;
+
+      clipMargin = Math.max(
+        0,
+        clipAverage - bestCompetitor
+      );
+    }
+  }
+
+  const clipSimilarity =
+    clipAverage > 0 || clipMax > 0
+      ? clipAverage * 0.7 + clipMax * 0.3
+      : 0;
+
   return {
-    similarity: bestSimilarity,
+    similarity: Math.max(
+      bestSimilarity,
+      clipSimilarity
+    ),
     overlap: bestOverlap,
+    clipAverage,
+    clipMax,
+    clipMargin,
   };
 };
 
@@ -365,6 +418,7 @@ const calculateCandidateScore = ({
   ocrText = "",
   speechText = "",
   visualSignals = [],
+  visualRecognitionMatches = [],
 }) => {
   const title = candidate.title || "";
   const originalTitle =
@@ -397,6 +451,7 @@ const calculateCandidateScore = ({
 
   const visualSignal = getVisualSignal(
     visualSignals,
+    visualRecognitionMatches,
     title,
     originalTitle
   );
@@ -494,8 +549,9 @@ const calculateCandidateScore = ({
       );
 
     const hasStrongVisual =
-      visualSignal.similarity >= 0.85 &&
-      visualSignal.overlap >= 0.5;
+      visualSignal.clipMax >= 0.45 &&
+      visualSignal.clipAverage >= 0.25 &&
+      visualSignal.clipMargin >= 0.08;
 
     finalScore =
       ocrScore * 0.5 +
@@ -646,6 +702,7 @@ const matchSceneCandidates = ({
   ocrText = "",
   speechText = "",
   visualSignals = [],
+  visualRecognitionMatches = [],
 }) => {
   if (
     !Array.isArray(candidates) ||
@@ -670,6 +727,7 @@ const matchSceneCandidates = ({
             ocrText,
             speechText,
             visualSignals,
+            visualRecognitionMatches,
           });
 
         console.log(
