@@ -19,13 +19,41 @@ if (!reelUrl?.trim() && !uploadedVideo) {
   });
 }
 
-const job = await SceneFinderJob.create({
-  user: req.userId,
-  reelUrl: reelUrl?.trim() || "",
-  videoPath: uploadedVideo || "",
-  source: "web",
-  status: "pending",
-});
+let job;
+
+try {
+  job = await SceneFinderJob.create({
+    user: req.userId,
+    reelUrl: reelUrl?.trim() || "",
+    videoPath: uploadedVideo || "",
+    source: "web",
+    status: "pending",
+  });
+} catch (error) {
+  if (error?.code !== 11000 || !reelUrl?.trim()) {
+    throw error;
+  }
+
+  const existingJob = await SceneFinderJob.findOne({
+    user: req.userId,
+    reelUrl: reelUrl.trim(),
+    status: {
+      $in: ["pending", "processing"],
+    },
+  });
+
+  if (!existingJob) {
+    throw error;
+  }
+
+  return res.status(200).json({
+    message: "This Reel is already being analyzed.",
+    job: {
+      id: existingJob._id,
+      status: existingJob.status,
+    },
+  });
+}
 
 // Queue processing so heavy Scene Finder jobs are bounded.
 enqueueSceneFinderJob(
