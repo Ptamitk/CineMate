@@ -473,8 +473,18 @@ const calculateCandidateScore = ({
   let finalScore = 0;
   let evidenceType = "none";
 
-  if (
+  const strongEnoughCaption =
     usableCaptionTitle &&
+    (
+      captionSignal.exact === 1 ||
+      (
+        captionSignal.similarity >= 0.72 &&
+        captionSignal.overlap >= 0.45
+      )
+    );
+
+  if (
+    strongEnoughCaption &&
     captionSignal.exact === 1
   ) {
     finalScore = 0.98;
@@ -493,7 +503,7 @@ const calculateCandidateScore = ({
     );
 
     evidenceType = "caption-exact";
-  } else if (usableCaptionTitle) {
+  } else if (strongEnoughCaption) {
     finalScore =
       captionSignal.similarity * 0.65 +
       captionSignal.overlap * 0.2 +
@@ -689,7 +699,28 @@ const isStrongTextMatch = (
   }
 
   return (
-    signal.evidenceType === "text" &&
+    (
+      signal.evidenceType === "text" ||
+      signal.evidenceType === "text-multi-signal"
+    ) &&
+    signal.finalScore >= 0.62
+  );
+};
+
+const isStrongVisualMatch = (
+  signal
+) => {
+  if (
+    signal.extractedCaptionTitle &&
+    !isPromotionalTitle(
+      signal.extractedCaptionTitle
+    )
+  ) {
+    return false;
+  }
+
+  return (
+    signal.evidenceType === "visual" &&
     signal.finalScore >= 0.62
   );
 };
@@ -775,7 +806,8 @@ const matchSceneCandidates = ({
   const strongCandidates =
     scoredCandidates.filter(
       ({ signal }) =>
-        isStrongTextMatch(signal)
+        isStrongTextMatch(signal) ||
+        isStrongVisualMatch(signal)
     );
 
   if (!strongCandidates.length) {
