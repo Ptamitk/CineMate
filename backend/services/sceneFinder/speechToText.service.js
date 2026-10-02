@@ -49,6 +49,14 @@ transcriber = model;
 return transcriberPromise;
 };
 
+const MAX_WAV_BYTES = Math.max(
+  5 * 1024 * 1024,
+  Number(
+    process.env.SCENE_FINDER_MAX_AUDIO_BYTES ||
+      25 * 1024 * 1024
+  )
+);
+
 const loadWavAudio = (
 audioPath
 ) => {
@@ -56,6 +64,14 @@ if (!fs.existsSync(audioPath)) {
 throw new Error(
 "Audio file was not found."
 );
+}
+
+const stats = fs.statSync(audioPath);
+
+if (stats.size > MAX_WAV_BYTES) {
+  throw new Error(
+    "Audio file exceeds the Scene Finder Whisper memory safety limit."
+  );
 }
 
 const buffer =
