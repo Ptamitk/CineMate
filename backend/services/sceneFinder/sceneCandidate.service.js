@@ -644,7 +644,7 @@ const discoverFallbackCandidates = async ({
         if (Array.isArray(data.results)) {
           discovered.push(
             ...data.results
-              .slice(0, 12)
+              .slice(0, 20)
               .map((item) => ({
                 ...item,
                 contentType: mediaType,
@@ -662,7 +662,7 @@ const discoverFallbackCandidates = async ({
 
   return deduplicateCandidates(
     discovered.map(toCandidate)
-  ).slice(0, 120);
+  ).slice(0, 180);
 };
 
 const toCandidate = (item) => {
