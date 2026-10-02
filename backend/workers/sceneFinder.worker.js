@@ -125,12 +125,28 @@ const sendTelegramFinalResult = async (
           ? `\nConfidence: ${Math.round(result.confidence)}%`
           : "";
 
+      const evidence =
+        result.evidenceType
+          ? `\nEvidence: ${String(result.evidenceType).replace(/-/g, " ")}`
+          : "";
+
+      const contentType =
+        result.contentType === "tv"
+          ? "TV series"
+          : result.contentType === "movie"
+            ? "Movie"
+            : "";
+
       message =
         `Scene identified: ${result.title}` +
         (result.year
           ? ` (${result.year})`
           : "") +
+        (contentType
+          ? `\nType: ${contentType}`
+          : "") +
         confidence +
+        evidence +
         "\n\nOpen CineMate to view the full result.";
     } else if (status === "failed") {
       message =
