@@ -236,6 +236,7 @@ const processSceneFinderJob = async (
   let audioDirectory = null;
   let downloadedMediaDirectory = null;
   let heartbeatTimer = null;
+  let leaseLost = false;
 
   let claimCompleted = false;
 
@@ -253,25 +254,37 @@ const processSceneFinderJob = async (
     }
 
     heartbeatTimer = setInterval(
-      () => {
-        SceneFinderJob.updateOne(
-          {
-            _id: jobId,
-            workerId: WORKER_ID,
-            status: "processing",
-          },
-          {
-            $set: {
-              processingHeartbeatAt:
-                new Date(),
-            },
+      async () => {
+        try {
+          const heartbeat =
+            await SceneFinderJob.updateOne(
+              {
+                _id: jobId,
+                workerId: WORKER_ID,
+                status: "processing",
+              },
+              {
+                $set: {
+                  processingHeartbeatAt:
+                    new Date(),
+                },
+              }
+            );
+
+          if (heartbeat.modifiedCount !== 1) {
+            leaseLost = true;
+
+            console.warn(
+              "Scene Finder worker lease lost:",
+              jobId
+            );
           }
-        ).catch((error) => {
+        } catch (error) {
           console.error(
             "Scene Finder Heartbeat Error:",
             error.message
           );
-        });
+        }
       },
       PROCESSING_HEARTBEAT_MS
     );
@@ -566,7 +579,8 @@ const processSceneFinderJob = async (
     }
 
     await cleanupSceneFiles({
-      uploadedVideo,
+      uploadedVideo:
+        leaseLost ? null : uploadedVideo,
       frameDirectory,
       audioDirectory,
     });
