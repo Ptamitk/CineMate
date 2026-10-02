@@ -36,7 +36,9 @@ const {
   telegramRequest,
 } = require("../services/telegram/telegram.service");
 
-const WORKER_ID = `scene-${process.pid}-${crypto.randomUUID()}`;\n\nconst normalizeWorkerError = (error) => {
+const WORKER_ID = `scene-${process.pid}-${crypto.randomUUID()}`;
+
+const normalizeWorkerError = (error) => {
   const message =
     error?.message ||
     String(error || "Scene Finder processing failed.");
