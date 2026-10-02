@@ -5,6 +5,14 @@ const os = require("os");
 const { runFFmpeg } = require("./ffmpeg.service");
 const { getVideoDuration } = require("./videoDuration.service");
 
+const MAX_VIDEO_DURATION_SECONDS = Math.max(
+  30,
+  Number(
+    process.env.SCENE_FINDER_MAX_DURATION_SECONDS ||
+      10 * 60
+  )
+);
+
 const extractFrames = async ({
   videoPath,
   intervalSeconds = 2,
@@ -38,6 +46,28 @@ const extractFrames = async ({
 
   const duration =
     await getVideoDuration(videoPath);
+
+  if (!Number.isFinite(duration) || duration <= 0) {
+    await fs.promises.rm(outputDirectory, {
+      recursive: true,
+      force: true,
+    });
+
+    throw new Error(
+      "Could not determine a valid Scene Finder video duration."
+    );
+  }
+
+  if (duration > MAX_VIDEO_DURATION_SECONDS) {
+    await fs.promises.rm(outputDirectory, {
+      recursive: true,
+      force: true,
+    });
+
+    throw new Error(
+      `Scene Finder videos are limited to ${MAX_VIDEO_DURATION_SECONDS} seconds.`
+    );
+  }
 
   console.log(
     `Video duration: ${duration.toFixed(2)} seconds`
