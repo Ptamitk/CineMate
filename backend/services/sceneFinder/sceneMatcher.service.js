@@ -26,6 +26,54 @@ const getYear = (date = "") => {
   return match ? Number(match[1]) : null;
 };
 
+const PROMO_TITLE_PATTERNS = [
+  /^only in theaters?$/i,
+  /^now playing$/i,
+  /^coming soon$/i,
+  /^watch now$/i,
+  /^official trailer$/i,
+  /^official teaser$/i,
+  /^new trailer$/i,
+  /^new teaser$/i,
+  /^full video$/i,
+  /^full movie$/i,
+  /^subscribe$/i,
+  /^follow us$/i,
+  /^link in bio$/i,
+  /^click the link$/i,
+  /^out now$/i,
+  /^available now$/i,
+];
+
+const isPromotionalTitle = (value = "") => {
+  const normalized = normalizeTitle(value);
+
+  if (!normalized) {
+    return true;
+  }
+
+  if (
+    PROMO_TITLE_PATTERNS.some((pattern) =>
+      pattern.test(normalized)
+    )
+  ) {
+    return true;
+  }
+
+  const words = normalized.split(/\s+/);
+
+  if (
+    words.length <= 5 &&
+    /^(only|now|new|official|watch|coming|out|available|full|latest|exclusive)$/.test(
+      words[0]
+    )
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
 const getTitleSimilarity = (a = "", b = "") => {
   const first = normalizeTitle(a);
   const second = normalizeTitle(b);
@@ -322,8 +370,15 @@ const calculateCandidateScore = ({
   const originalTitle =
     candidate.originalTitle || "";
 
+  const usableCaptionTitle =
+    isPromotionalTitle(
+      extractedCaptionTitle
+    )
+      ? ""
+      : extractedCaptionTitle;
+
   const captionSignal = getTextSignal(
-    extractedCaptionTitle,
+    usableCaptionTitle,
     title,
     originalTitle
   );
@@ -363,7 +418,10 @@ const calculateCandidateScore = ({
   let finalScore = 0;
   let evidenceType = "none";
 
-  if (captionSignal.exact === 1) {
+  if (
+    usableCaptionTitle &&
+    captionSignal.exact === 1
+  ) {
     finalScore = 0.98;
 
     if (yearScore === 1) {
@@ -380,7 +438,7 @@ const calculateCandidateScore = ({
     );
 
     evidenceType = "caption-exact";
-  } else if (extractedCaptionTitle) {
+  } else if (usableCaptionTitle) {
     finalScore =
       captionSignal.similarity * 0.65 +
       captionSignal.overlap * 0.2 +
@@ -457,6 +515,10 @@ const calculateCandidateScore = ({
       Number(hasStrongSpeech) +
       Number(hasStrongVisual);
 
+    const independentTextSignals =
+      Number(hasStrongOcr) +
+      Number(hasStrongSpeech);
+
     if (strongEvidenceCount === 0) {
       finalScore = Math.min(
         finalScore,
@@ -464,11 +526,32 @@ const calculateCandidateScore = ({
       );
     }
 
+    /*
+     * One weak text signal must not be enough to
+     * identify a movie. Exact OCR/speech is allowed,
+     * otherwise require independent agreement.
+     */
+    if (
+      independentTextSignals === 1 &&
+      !(
+        ocrSignal.exact === 1 ||
+        speechSignal.exact === 1
+      )
+    ) {
+      finalScore = Math.min(
+        finalScore,
+        0.58
+      );
+    }
+
     if (
       hasStrongOcr ||
       hasStrongSpeech
     ) {
-      evidenceType = "text";
+      evidenceType =
+        independentTextSignals >= 2
+          ? "text-multi-signal"
+          : "text";
     } else if (hasStrongVisual) {
       evidenceType = "visual";
     }
@@ -514,7 +597,12 @@ const calculateCandidateScore = ({
 const isStrongCaptionMatch = (
   signal
 ) => {
-  if (!signal.extractedCaptionTitle) {
+  if (
+    !signal.extractedCaptionTitle ||
+    isPromotionalTitle(
+      signal.extractedCaptionTitle
+    )
+  ) {
     return false;
   }
 
@@ -535,7 +623,12 @@ const isStrongCaptionMatch = (
 const isStrongTextMatch = (
   signal
 ) => {
-  if (signal.extractedCaptionTitle) {
+  if (
+    signal.extractedCaptionTitle &&
+    !isPromotionalTitle(
+      signal.extractedCaptionTitle
+    )
+  ) {
     return false;
   }
 
