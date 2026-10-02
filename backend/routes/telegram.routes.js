@@ -10,7 +10,6 @@ const {
 
 const {
   emitTelegramSearchResult,
-  emitTelegramSceneResult,
 } = require("../services/telegram/telegramEvents.service");
 
 const {
@@ -26,7 +25,7 @@ const User =
 const router =
   express.Router();
 
-const isInstagramUrl = (
+const getCanonicalInstagramUrl = (
   text = ""
 ) => {
   try {
@@ -36,34 +35,33 @@ const isInstagramUrl = (
       url.hostname.toLowerCase();
 
     const validHost =
-      hostname ===
-        "instagram.com" ||
-      hostname ===
-        "www.instagram.com" ||
-      hostname ===
-        "m.instagram.com" ||
-      hostname ===
-        "instagr.am" ||
-      hostname ===
-        "www.instagr.am";
+      hostname === "instagram.com" ||
+      hostname === "www.instagram.com" ||
+      hostname === "m.instagram.com" ||
+      hostname === "instagr.am" ||
+      hostname === "www.instagr.am";
 
     if (!validHost) {
-      return false;
+      return null;
     }
 
-    return (
+    const pathname =
       url.pathname
-        .toLowerCase()
-        .startsWith("/reel/") ||
-      url.pathname
-        .toLowerCase()
-        .startsWith("/reels/") ||
-      url.pathname
-        .toLowerCase()
-        .startsWith("/p/")
-    );
+        .replace(/\/+$/, "")
+        .toLowerCase();
+
+    const validPath =
+      pathname.startsWith("/reel/") ||
+      pathname.startsWith("/reels/") ||
+      pathname.startsWith("/p/");
+
+    if (!validPath) {
+      return null;
+    }
+
+    return `https://www.instagram.com${pathname}`;
   } catch {
-    return false;
+    return null;
   }
 };
 
@@ -210,13 +208,17 @@ router.post(
         );
       }
 
-      if (isInstagramUrl(text)) {
-        const existingJob =
+      const canonicalReelUrl =
+        getCanonicalInstagramUrl(text);
+
+      if (canonicalReelUrl) {
+        let existingJob =
           await SceneFinderJob.findOne(
             {
               user:
                 connectedUser._id,
-              reelUrl: text,
+              reelUrl:
+                canonicalReelUrl,
               status: {
                 $in: [
                   "pending",
@@ -237,29 +239,55 @@ router.post(
           );
         }
 
-        const job =
-          await SceneFinderJob.create(
-            {
-              user:
-                connectedUser._id,
-              reelUrl: text,
-              videoPath: "",
-              source: "telegram",
-              status: "pending",
-            }
-          );
+        let job;
 
-        emitTelegramSceneResult(
-          connectedUser._id.toString(),
-          {
-            type: "scene",
-            jobId:
-              job._id.toString(),
-            status: "processing",
-            result: null,
-            error: "",
+        try {
+          job =
+            await SceneFinderJob.create(
+              {
+                user:
+                  connectedUser._id,
+                reelUrl:
+                  canonicalReelUrl,
+                videoPath: "",
+                source: "telegram",
+                status: "pending",
+              }
+            );
+        } catch (error) {
+          if (error?.code !== 11000) {
+            throw error;
           }
-        );
+
+          existingJob =
+            await SceneFinderJob.findOne(
+              {
+                user:
+                  connectedUser._id,
+                reelUrl:
+                  canonicalReelUrl,
+                status: {
+                  $in: [
+                    "pending",
+                    "processing",
+                  ],
+                },
+              }
+            );
+
+          if (existingJob) {
+            await sendTelegramMessage(
+              chatId,
+              "This Reel is already being analyzed.\n\nThe result will appear in CineMate."
+            );
+
+            return res.sendStatus(
+              200
+            );
+          }
+
+          throw error;
+        }
 
         await sendTelegramMessage(
           chatId,
