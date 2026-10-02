@@ -41,6 +41,15 @@ const queue = [];
 const activeJobs = new Set();
 const retryCounts = new Map();
 let draining = false;
+let recoveryTimer = null;
+
+const QUEUE_RECOVERY_INTERVAL_MS = Math.max(
+  30 * 1000,
+  Number(
+    process.env.SCENE_FINDER_QUEUE_RECOVERY_INTERVAL_MS ||
+      60 * 1000
+  )
+);
 
 const enqueueSceneFinderJob = (
   jobId,
@@ -224,6 +233,23 @@ const recoverSceneFinderJobs = async () => {
   }
 };
 
+const startSceneFinderQueueRecovery = () => {
+  if (recoveryTimer) return;
+
+  recoveryTimer = setInterval(async () => {
+    try {
+      await recoverSceneFinderJobs();
+    } catch (error) {
+      console.error(
+        "Scene Finder queue recovery error:",
+        error.message
+      );
+    }
+  }, QUEUE_RECOVERY_INTERVAL_MS);
+
+  recoveryTimer.unref?.();
+};
+
 const getSceneFinderQueueStatus = () => ({
   queued: queue.length,
   active: activeJobs.size,
@@ -234,4 +260,5 @@ module.exports = {
   enqueueSceneFinderJob,
   recoverSceneFinderJobs,
   getSceneFinderQueueStatus,
+  startSceneFinderQueueRecovery,
 };
