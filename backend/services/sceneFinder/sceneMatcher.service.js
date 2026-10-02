@@ -899,7 +899,17 @@ const matchSceneCandidates = ({
       Boolean(bestYear) &&
       bestYear === secondYear;
 
-    if (!sameTitle || !sameYear) {
+    const sameType =
+      Boolean(strongBest.candidate.contentType) &&
+      strongBest.candidate.contentType ===
+        second.candidate.contentType;
+
+    /*
+     * A movie and a series can legitimately share the same title
+     * and release year. Treat them as ambiguous unless their
+     * content types also agree.
+     */
+    if (!sameTitle || !sameYear || !sameType) {
       console.log(
         "Scene candidates too close to confidently select."
       );
