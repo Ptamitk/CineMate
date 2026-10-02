@@ -629,11 +629,6 @@ const calculateCandidateScore = ({
       finalScore += 0.01;
     }
 
-    finalScore = Math.min(
-      finalScore,
-      1
-    );
-
     evidenceType = "caption-exact";
   } else if (strongEnoughCaption) {
     finalScore =
