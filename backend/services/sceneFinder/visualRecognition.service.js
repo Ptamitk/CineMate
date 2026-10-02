@@ -95,7 +95,7 @@ framePath,
 candidate_labels:
 candidateLabels,
 hypothesis_template:
-"A scene from {}",
+"A scene from the movie or TV show {}",
 }
 );
 
@@ -250,7 +250,22 @@ for (const frame of frameResults) {
         relativeScore
       );
 
-    if (relativeScore >= 0.75) {
+    /*
+     * A label being returned is not enough: CLIP returns every
+     * supplied label. Count a frame as supporting evidence only
+     * when the title is both near the frame winner and among the
+     * top two predictions.
+     */
+    const resultRank =
+      frame.results.findIndex(
+        (item) => item.label === result.label
+      );
+
+    if (
+      resultRank >= 0 &&
+      resultRank < 2 &&
+      relativeScore >= 0.75
+    ) {
       current.topFrameCount += 1;
     }
   }
