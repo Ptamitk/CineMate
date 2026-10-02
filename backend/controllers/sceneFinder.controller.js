@@ -1,7 +1,7 @@
 const SceneFinderJob = require("../models/sceneFinderJob.model");
 
 const {
-processSceneFinderJob,
+enqueueSceneFinderJob,
 } = require("../services/sceneFinder/sceneJobQueue.service");
 
 const analyzeScene = async (req, res) => {
