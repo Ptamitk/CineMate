@@ -373,8 +373,10 @@ const SceneFinder = () => {
         );
 
         setIsSearching(false);
+        setJobId(null);
 
         if (!job.result?.title) {
+          setResult(null);
           setError(
             job.error ||
               "No confident scene match was found."
@@ -441,6 +443,8 @@ const SceneFinder = () => {
           job.error ||
             "Scene analysis failed. Please try again."
         );
+        setResult(null);
+        setJobId(null);
 
         return;
       }
