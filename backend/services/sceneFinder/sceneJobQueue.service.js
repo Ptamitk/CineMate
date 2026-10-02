@@ -9,6 +9,14 @@ const MAX_CONCURRENT_JOBS = Math.max(
   Number(process.env.SCENE_FINDER_CONCURRENCY || 2)
 );
 
+const PROCESSING_STALE_MS = Math.max(
+  60 * 1000,
+  Number(
+    process.env.SCENE_FINDER_PROCESSING_STALE_MS ||
+      5 * 60 * 1000
+  )
+);
+
 const queue = [];
 const activeJobs = new Set();
 let draining = false;
@@ -95,16 +103,37 @@ const drainQueue = () => {
 };
 
 const recoverSceneFinderJobs = async () => {
+  const staleBefore = new Date(
+    Date.now() - PROCESSING_STALE_MS
+  );
+
   const jobs =
     await SceneFinderJob.find({
-      status: {
-        $in: [
-          "pending",
-          "processing",
-        ],
-      },
+      $or: [
+        {
+          status: "pending",
+        },
+        {
+          status: "processing",
+          processingHeartbeatAt: {
+            $lte: staleBefore,
+          },
+        },
+        {
+          status: "processing",
+          processingHeartbeatAt: null,
+          processingStartedAt: {
+            $lte: staleBefore,
+          },
+        },
+        {
+          status: "processing",
+          processingHeartbeatAt: null,
+          processingStartedAt: null,
+        },
+      ],
     })
-      .select("_id videoPath")
+      .select("_id videoPath status")
       .sort({ createdAt: 1 })
       .lean();
 
