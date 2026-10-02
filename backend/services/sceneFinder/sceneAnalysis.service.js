@@ -4,6 +4,7 @@ const { matchSceneCandidates } = require("./sceneMatcher.service");
 const { analyzeVisualFrames } = require("./visualAnalysis.service");
 const {
   analyzeVisualRecognition,
+  analyzeArtworkSimilarity,
 } = require("./visualRecognition.service");
 const { selectUsefulFrames } = require("./frameSelection.service");
 
@@ -178,6 +179,47 @@ const analyzeScene = async ({
     );
   }
 
+  /*
+   * Second visual retrieval channel:
+   * compare the actual reel frames with TMDB backdrop artwork.
+   * This is image-to-image similarity, so it does not require CLIP
+   * to understand a movie title as a textual concept.
+   */
+  let artworkSimilarityMatches = [];
+
+  if (candidates.length && visualFrames.length) {
+    const artworkCandidates =
+      candidates
+        .slice(0, 120)
+        .map((candidate) => ({
+          label: candidate.title,
+          imageUrl:
+            candidate.backdropImage ||
+            candidate.image ||
+            "",
+        }))
+        .filter(
+          (candidate) =>
+            candidate.label &&
+            candidate.imageUrl
+        );
+
+    artworkSimilarityMatches =
+      await analyzeArtworkSimilarity({
+        frameFiles: selectUsefulFrames({
+          frameFiles: visualFrames,
+          maxFrames: 8,
+        }),
+        candidateArtwork:
+          artworkCandidates,
+      });
+
+    console.log(
+      "CLIP artwork similarity matches:",
+      artworkSimilarityMatches.slice(0, 10)
+    );
+  }
+
   const matches =
     matchSceneCandidates({
       candidates,
@@ -193,6 +235,8 @@ const analyzeScene = async ({
         candidateResult?.visualSignals || [],
       visualRecognitionMatches:
         visualRecognition.matches || [],
+      artworkSimilarityMatches:
+        artworkSimilarityMatches || [],
     }) || [];
 
   const bestMatch =
@@ -204,6 +248,7 @@ const analyzeScene = async ({
     signals,
     visualAnalysis,
     visualRecognition,
+    artworkSimilarityMatches,
     caption,
     extractedCaptionTitle:
       candidateResult?.extractedCaptionTitle || "",
