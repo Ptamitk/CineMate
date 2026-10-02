@@ -387,9 +387,37 @@ const tmdbRequest = async (
     }
   );
 
-  const response = await fetch(url, {
-    headers: getHeaders(),
-  });
+  const controller = new AbortController();
+  const timeoutMs = Math.max(
+    5000,
+    Number(
+      process.env.SCENE_FINDER_TMDB_TIMEOUT_MS || 15000
+    )
+  );
+
+  const timeout = setTimeout(
+    () => controller.abort(),
+    timeoutMs
+  );
+
+  let response;
+
+  try {
+    response = await fetch(url, {
+      headers: getHeaders(),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(
+        `TMDB request timed out after ${timeoutMs}ms.`
+      );
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const body = await response.text();
