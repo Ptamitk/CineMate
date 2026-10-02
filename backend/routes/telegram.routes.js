@@ -17,241 +17,316 @@ const {
   processSceneFinderJob,
 } = require("../workers/sceneFinder.worker");
 
-const SceneFinderJob = require("../models/sceneFinderJob.model");
+const SceneFinderJob =
+  require("../models/sceneFinderJob.model");
 
-const User = require("../models/user.model");
+const User =
+  require("../models/user.model");
 
-const router = express.Router();
+const router =
+  express.Router();
 
-const CINEMATE_FRONTEND_URL =
-  "https://headers-gibraltar-banners-signing.trycloudflare.com";
-
-const isVideoOrInstagramUrl = (text) => {
+const isInstagramUrl = (
+  text = ""
+) => {
   try {
     const url = new URL(text);
 
     const hostname =
       url.hostname.toLowerCase();
 
+    const validHost =
+      hostname ===
+        "instagram.com" ||
+      hostname ===
+        "www.instagram.com" ||
+      hostname ===
+        "m.instagram.com" ||
+      hostname ===
+        "instagr.am" ||
+      hostname ===
+        "www.instagr.am";
+
+    if (!validHost) {
+      return false;
+    }
+
     return (
-      hostname === "instagram.com" ||
-      hostname === "www.instagram.com" ||
-      hostname === "m.instagram.com" ||
-      hostname === "instagr.am" ||
-      hostname === "www.instagr.am"
+      url.pathname
+        .toLowerCase()
+        .startsWith("/reel/") ||
+      url.pathname
+        .toLowerCase()
+        .startsWith("/reels/") ||
+      url.pathname
+        .toLowerCase()
+        .startsWith("/p/")
     );
   } catch {
     return false;
   }
 };
 
-router.post("/webhook", async (req, res) => {
+const sendTelegramMessage = async (
+  chatId,
+  text
+) => {
   try {
-    console.log(
-      "Telegram Update:",
-      JSON.stringify(req.body, null, 2)
+    await telegramRequest(
+      "sendMessage",
+      {
+        chat_id: chatId,
+        text,
+      }
     );
+  } catch (error) {
+    console.error(
+      "Telegram Send Message Error:",
+      error.message
+    );
+  }
+};
 
-    const message = req.body?.message;
+router.post(
+  "/webhook",
+  async (req, res) => {
+    try {
+      const message =
+        req.body?.message;
 
-    if (!message?.chat?.id) {
-      return res.sendStatus(200);
-    }
+      if (!message?.chat?.id) {
+        return res.sendStatus(200);
+      }
 
-    const chatId = String(message.chat.id);
+      const chatId =
+        String(message.chat.id);
 
-    const text =
-      message.text?.trim() || "";
+      const text =
+        message.text?.trim() || "";
 
-    if (text === "/start") {
-      await telegramRequest("sendMessage", {
-        chat_id: chatId,
-        text:
-          "Welcome to CineMate! 🎬\n\n" +
-          "First connect your CineMate account.\n\n" +
-          "In CineMate Profile → Connect Telegram → Generate Code.\n\n" +
-          "Then send:\n" +
-          "/connect YOUR_CODE",
-      });
+      if (!text) {
+        return res.sendStatus(200);
+      }
 
-      return res.sendStatus(200);
-    }
-
-    if (text.startsWith("/connect ")) {
-      const code = text
-        .slice("/connect ".length)
-        .trim()
-        .toUpperCase();
-
-      if (!code) {
-        await telegramRequest("sendMessage", {
-          chat_id: chatId,
-          text:
-            "Please provide your CineMate pairing code.\n\n" +
-            "Example:\n" +
-            "/connect ABCD1234",
-        });
+      if (text === "/start") {
+        await sendTelegramMessage(
+          chatId,
+          "Welcome to CineMate!\n\n" +
+            "Connect your CineMate account first.\n\n" +
+            "Open CineMate → Profile → Connect Telegram → Generate Code.\n\n" +
+            "Then send:\n/connect YOUR_CODE"
+        );
 
         return res.sendStatus(200);
       }
 
-      const user =
-        await User.findOne({
-          telegramLinkCode: code,
-          telegramLinkCodeExpires: {
-            $gt: new Date(),
-          },
-        });
+      if (
+        text.startsWith(
+          "/connect "
+        )
+      ) {
+        const code =
+          text
+            .slice(
+              "/connect ".length
+            )
+            .trim()
+            .toUpperCase();
 
-      if (!user) {
-        await telegramRequest("sendMessage", {
-          chat_id: chatId,
-          text:
-            "This pairing code is invalid or expired.\n\n" +
-            "Please generate a new code from your CineMate Profile.",
-        });
+        if (!code) {
+          await sendTelegramMessage(
+            chatId,
+            "Please provide your CineMate pairing code.\n\nExample:\n/connect ABCD1234"
+          );
 
-        return res.sendStatus(200);
-      }
-
-      await User.updateOne(
-        { _id: user._id },
-        {
-          $set: {
-            telegramChatId: chatId,
-          },
-          $unset: {
-            telegramLinkCode: "",
-            telegramLinkCodeExpires: "",
-          },
+          return res.sendStatus(200);
         }
-      );
 
-      await telegramRequest("sendMessage", {
-        chat_id: chatId,
-        text:
-          "✅ Telegram connected successfully!\n\n" +
-          "Now type a movie or TV show name here.\n\n" +
-          "You can also send an Instagram Reel/video link.\n\n" +
-          "The result will appear directly inside CineMate.",
-      });
+        const user =
+          await User.findOne({
+            telegramLinkCode:
+              code,
+            telegramLinkCodeExpires:
+              {
+                $gt: new Date(),
+              },
+          });
 
-      return res.sendStatus(200);
-    }
+        if (!user) {
+          await sendTelegramMessage(
+            chatId,
+            "This pairing code is invalid or expired.\n\nGenerate a new code from CineMate."
+          );
 
-    if (text) {
+          return res.sendStatus(200);
+        }
+
+        await User.updateOne(
+          {
+            _id: user._id,
+          },
+          {
+            $set: {
+              telegramChatId:
+                chatId,
+            },
+            $unset: {
+              telegramLinkCode:
+                "",
+              telegramLinkCodeExpires:
+                "",
+            },
+          }
+        );
+
+        await sendTelegramMessage(
+          chatId,
+          "Telegram connected successfully!\n\n" +
+            "You can now send:\n" +
+            "• Movie names\n" +
+            "• TV show names\n" +
+            "• Instagram Reel links"
+        );
+
+        return res.sendStatus(
+          200
+        );
+      }
+
       const connectedUser =
         await User.findOne({
-          telegramChatId: chatId,
+          telegramChatId:
+            chatId,
         });
 
       if (!connectedUser) {
-        await telegramRequest("sendMessage", {
-          chat_id: chatId,
-          text:
-            "Please connect your CineMate account first.\n\n" +
-            "Open CineMate → Profile → Connect Telegram → Generate Code.",
-        });
+        await sendTelegramMessage(
+          chatId,
+          "Please connect your CineMate account first.\n\nOpen CineMate → Profile → Connect Telegram → Generate Code."
+        );
 
-        return res.sendStatus(200);
+        return res.sendStatus(
+          200
+        );
       }
 
-      if (isVideoOrInstagramUrl(text)) {
-        const job =
-          await SceneFinderJob.create({
-            user: connectedUser._id,
-            reelUrl: text,
-            videoPath: "",
-            status: "pending",
-          });
+      if (isInstagramUrl(text)) {
+        const existingJob =
+          await SceneFinderJob.findOne(
+            {
+              user:
+                connectedUser._id,
+              reelUrl: text,
+              status: {
+                $in: [
+                  "pending",
+                  "processing",
+                ],
+              },
+            }
+          );
 
-        console.log(
-          "Telegram Scene Finder Job Created:",
-          job._id.toString()
-        );
+        if (existingJob) {
+          await sendTelegramMessage(
+            chatId,
+            "This Reel is already being analyzed.\n\nThe result will appear in CineMate."
+          );
+
+          return res.sendStatus(
+            200
+          );
+        }
+
+        const job =
+          await SceneFinderJob.create(
+            {
+              user:
+                connectedUser._id,
+              reelUrl: text,
+              videoPath: "",
+              status: "pending",
+            }
+          );
 
         emitTelegramSceneResult(
           connectedUser._id.toString(),
           {
             type: "scene",
-            jobId: job._id.toString(),
+            jobId:
+              job._id.toString(),
             status: "processing",
             result: null,
             error: "",
           }
         );
 
+        await sendTelegramMessage(
+          chatId,
+          "Reel received.\n\nCineMate is analyzing the scene.\n\nThe result will appear inside CineMate."
+        );
+
         res.sendStatus(200);
 
         processSceneFinderJob(
           job._id.toString()
-        )
-          .then(async () => {
-            try {
-              await telegramRequest("sendMessage", {
-                chat_id: chatId,
-                text:
-                  "🎬 Reel/video received.\n\n" +
-                  "CineMate is analyzing the scene.\n\n" +
-                  "The result will appear directly inside CineMate.",
-              });
-            } catch (error) {
-              console.error(
-                "Telegram Processing Message Error:",
-                error.message
-              );
-            }
-          })
-          .catch((error) => {
-            console.error(
-              "Telegram Scene Finder Processing Error:",
-              error.message
-            );
-          });
+        ).catch((error) => {
+          console.error(
+            "Telegram Scene Finder Worker Error:",
+            error.message
+          );
+        });
 
         return;
       }
 
       const result =
-        await handleTelegramText(text);
+        await handleTelegramText(
+          text
+        );
 
       if (
         result.type === "search" &&
-        result.results.length > 0
+        Array.isArray(
+          result.results
+        ) &&
+        result.results.length
       ) {
         emitTelegramSearchResult(
           connectedUser._id.toString(),
           result
         );
 
-        await telegramRequest("sendMessage", {
-          chat_id: chatId,
-          text:
-            `✅ Search received: "${result.query}"\n\n` +
-            "Your CineMate app will show the results.",
-        });
+        await sendTelegramMessage(
+          chatId,
+          `Search received: "${result.query}"\n\nCineMate will show the results in your app.`
+        );
 
-        return res.sendStatus(200);
+        return res.sendStatus(
+          200
+        );
       }
 
-      await telegramRequest("sendMessage", {
-        chat_id: chatId,
-        text:
-          `I couldn't find a matching movie or TV show for "${text}".`,
-      });
-    }
+      await sendTelegramMessage(
+        chatId,
+        `I couldn't find a matching movie or TV show for "${text}".`
+      );
 
-    return res.sendStatus(200);
-  } catch (error) {
-    console.error(
-      "Telegram Webhook Error:",
-      error.message
-    );
+      return res.sendStatus(
+        200
+      );
+    } catch (error) {
+      console.error(
+        "Telegram Webhook Error:",
+        error.message
+      );
 
-    if (!res.headersSent) {
-      return res.sendStatus(500);
+      if (!res.headersSent) {
+        return res.sendStatus(
+          500
+        );
+      }
     }
   }
-});
+);
 
 module.exports = router;

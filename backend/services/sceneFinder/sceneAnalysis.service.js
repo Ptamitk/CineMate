@@ -1,101 +1,81 @@
-const {
-  analyzeSceneSignals,
-} = require("./sceneSignals.service");
-
-const {
-  findSceneCandidates,
-} = require("./sceneCandidate.service");
-
-const {
-  matchSceneCandidates,
-} = require("./sceneMatcher.service");
-
-const {
-  analyzeVisualFrames,
-} = require("./visualAnalysis.service");
+const { analyzeSceneSignals } = require("./sceneSignals.service");
+const { findSceneCandidates } = require("./sceneCandidate.service");
+const { matchSceneCandidates } = require("./sceneMatcher.service");
+const { analyzeVisualFrames } = require("./visualAnalysis.service");
 
 const analyzeScene = async ({
   frameFiles = [],
+  ocrFrameFiles = [],
   audioPath = null,
   caption = "",
 }) => {
   console.log("Starting Scene Finder analysis...");
 
   const signals = await analyzeSceneSignals({
-    frameFiles,
+    frameFiles:
+      ocrFrameFiles.length
+        ? ocrFrameFiles
+        : frameFiles,
     audioPath,
   });
 
   console.log("Scene signals extracted.");
-
   console.log("OCR TEXT:", signals.ocr.text);
   console.log("SPEECH TEXT:", signals.speech.text);
   console.log("REEL CAPTION:", caption);
-  console.log("CAPTION JSON:", JSON.stringify(caption));
 
-  const visualAnalysis = await analyzeVisualFrames({
-    frameFiles,
-  });
+  const visualAnalysis =
+    await analyzeVisualFrames({
+      frameFiles,
+    });
 
   console.log(
     `Visual frames prepared: ${visualAnalysis.framesAnalyzed}`
   );
 
-  const candidateResult = await findSceneCandidates({
-    ocrText: signals.ocr.text,
-    speechText: signals.speech.text,
-    caption,
-    visualAnalysis,
-  });
-
-  const candidates = candidateResult?.candidates || [];
-
-  console.log(
-    `Candidates found: ${candidates.length}`
-  );
-
-  const matches =
-    matchSceneCandidates({
+  const candidateResult =
+    await findSceneCandidates({
       ocrText: signals.ocr.text,
       speechText: signals.speech.text,
       caption,
+      visualAnalysis,
+    });
+
+  const candidates =
+    candidateResult?.candidates || [];
+
+  const matches =
+    matchSceneCandidates({
       candidates,
-      visualSignals: candidateResult?.visualSignals || [],
+      extractedCaptionTitle:
+        candidateResult?.extractedCaptionTitle || "",
+      captionYear:
+        candidateResult?.captionYear || null,
+      captionType:
+        candidateResult?.captionType || "",
+      ocrText: signals.ocr.text,
+      speechText: signals.speech.text,
+      visualSignals:
+        candidateResult?.visualSignals || [],
     }) || [];
 
-  console.log(`Candidates scored: ${matches.length}`);
-
-  console.log(
-    "SCENE MATCHES:",
-    matches.map((match) => ({
-      title: match.title,
-      contentType: match.contentType,
-      confidence: match.confidence,
-      sceneScore: match.sceneScore,
-    }))
-  );
-
   const bestMatch =
-    matches.length > 0 ? matches[0] : null;
-
-  if (bestMatch) {
-    console.log(
-      "FINAL SCENE MATCH:",
-      {
-        title: bestMatch.title,
-        contentType: bestMatch.contentType,
-        confidence: bestMatch.confidence,
-      }
-    );
-  } else {
-    console.log("FINAL SCENE MATCH: None");
-  }
+    matches.length > 0
+      ? matches[0]
+      : null;
 
   return {
     signals,
     visualAnalysis,
     caption,
-    queries: candidateResult?.queries || [],
+    extractedCaptionTitle:
+      candidateResult?.extractedCaptionTitle || "",
+    captionYear:
+      candidateResult?.captionYear || null,
+    captionType:
+      candidateResult?.captionType || "",
+    queries:
+      candidateResult?.queries || [],
     candidates: matches,
     bestMatch,
   };

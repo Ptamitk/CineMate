@@ -1,8 +1,8 @@
 const express = require("express");
 
 const {
-subscribeToTelegramSearch,
-subscribeToTelegramScene,
+  subscribeToTelegramSearch,
+  subscribeToTelegramScene,
 } = require("../services/telegram/telegramEvents.service");
 
 const authMiddleware = require("../middleware/auth.middleware");
@@ -10,84 +10,170 @@ const authMiddleware = require("../middleware/auth.middleware");
 const router = express.Router();
 
 router.get(
-"/search-stream",
-authMiddleware,
-(req, res) => {
-const userId =
-req.userId.toString();
+  "/stream",
+  authMiddleware,
+  (req, res) => {
+    const userId =
+      req.userId.toString();
 
+    res.status(200);
 
-res.setHeader(
-  "Content-Type",
-  "text/event-stream"
-);
-
-res.setHeader(
-  "Cache-Control",
-  "no-cache"
-);
-
-res.setHeader(
-  "Connection",
-  "keep-alive"
-);
-
-res.flushHeaders();
-
-res.write(
-  `data: ${JSON.stringify({
-    type: "connected",
-  })}\n\n`
-);
-
-/* MOVIE / TV SEARCH EVENT */
-
-const unsubscribeSearch =
-  subscribeToTelegramSearch(
-    userId,
-    (result) => {
-      res.write(
-        `data: ${JSON.stringify(
-          result
-        )}\n\n`
-      );
-    }
-  );
-
-/* SCENE FINDER EVENT */
-
-const unsubscribeScene =
-  subscribeToTelegramScene(
-    userId,
-    (result) => {
-      res.write(
-        `data: ${JSON.stringify(
-          result
-        )}\n\n`
-      );
-    }
-  );
-
-/* KEEP CONNECTION ALIVE */
-
-const keepAlive =
-  setInterval(() => {
-    res.write(
-      ": keep-alive\n\n"
+    res.setHeader(
+      "Content-Type",
+      "text/event-stream"
     );
-  }, 30000);
 
-req.on("close", () => {
-  clearInterval(keepAlive);
+    res.setHeader(
+      "Cache-Control",
+      "no-cache, no-transform"
+    );
 
-  unsubscribeSearch();
-  unsubscribeScene();
+    res.setHeader(
+      "Connection",
+      "keep-alive"
+    );
 
-  res.end();
-});
+    res.setHeader(
+      "X-Accel-Buffering",
+      "no"
+    );
 
+    res.flushHeaders();
 
-}
+    res.write(
+      `data: ${JSON.stringify({
+        type: "connected",
+      })}\n\n`
+    );
+
+    const sendEvent = (result) => {
+      if (res.writableEnded) {
+        return;
+      }
+
+      res.write(
+        `data: ${JSON.stringify(
+          result
+        )}\n\n`
+      );
+    };
+
+    const unsubscribeSearch =
+      subscribeToTelegramSearch(
+        userId,
+        sendEvent
+      );
+
+    const unsubscribeScene =
+      subscribeToTelegramScene(
+        userId,
+        sendEvent
+      );
+
+    const keepAlive =
+      setInterval(() => {
+        if (
+          res.writableEnded
+        ) {
+          return;
+        }
+
+        res.write(
+          ": keep-alive\n\n"
+        );
+      }, 30000);
+
+    req.on("close", () => {
+      clearInterval(
+        keepAlive
+      );
+
+      unsubscribeSearch();
+      unsubscribeScene();
+
+      if (!res.writableEnded) {
+        res.end();
+      }
+    });
+  }
+);
+
+router.get(
+  "/search-stream",
+  authMiddleware,
+  (req, res) => {
+    const userId =
+      req.userId.toString();
+
+    res.status(200);
+
+    res.setHeader(
+      "Content-Type",
+      "text/event-stream"
+    );
+
+    res.setHeader(
+      "Cache-Control",
+      "no-cache, no-transform"
+    );
+
+    res.setHeader(
+      "Connection",
+      "keep-alive"
+    );
+
+    res.setHeader(
+      "X-Accel-Buffering",
+      "no"
+    );
+
+    res.flushHeaders();
+
+    res.write(
+      `data: ${JSON.stringify({
+        type: "connected",
+      })}\n\n`
+    );
+
+    const unsubscribe =
+      subscribeToTelegramSearch(
+        userId,
+        (result) => {
+          if (
+            !res.writableEnded
+          ) {
+            res.write(
+              `data: ${JSON.stringify(
+                result
+              )}\n\n`
+            );
+          }
+        }
+      );
+
+    const keepAlive =
+      setInterval(() => {
+        if (
+          !res.writableEnded
+        ) {
+          res.write(
+            ": keep-alive\n\n"
+          );
+        }
+      }, 30000);
+
+    req.on("close", () => {
+      clearInterval(
+        keepAlive
+      );
+
+      unsubscribe();
+
+      if (!res.writableEnded) {
+        res.end();
+      }
+    });
+  }
 );
 
 module.exports = router;

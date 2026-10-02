@@ -57,13 +57,8 @@ const getTitleSimilarity = (a = "", b = "") => {
     }
   }
 
-  const firstTokens = new Set(
-    tokenize(first)
-  );
-
-  const secondTokens = new Set(
-    tokenize(second)
-  );
+  const firstTokens = new Set(tokenize(first));
+  const secondTokens = new Set(tokenize(second));
 
   if (
     !firstTokens.size ||
@@ -85,9 +80,7 @@ const getTitleSimilarity = (a = "", b = "") => {
     ...secondTokens,
   ]).size;
 
-  return union
-    ? common / union
-    : 0;
+  return union ? common / union : 0;
 };
 
 const getExactTitleScore = (
@@ -108,10 +101,7 @@ const getWordOverlap = (
   source = "",
   candidate = ""
 ) => {
-  const sourceTokens = new Set(
-    tokenize(source)
-  );
-
+  const sourceTokens = new Set(tokenize(source));
   const candidateTokens = new Set(
     tokenize(candidate)
   );
@@ -144,32 +134,22 @@ const getTypeScore = (
   captionType = "",
   contentType = ""
 ) => {
-  if (
-    !captionType ||
-    !contentType
-  ) {
+  if (!captionType || !contentType) {
     return 0;
   }
 
-  return captionType === contentType
-    ? 1
-    : -0.4;
+  return captionType === contentType ? 1 : -0.4;
 };
 
 const getYearScore = (
   captionYear,
   candidateYear
 ) => {
-  if (
-    !captionYear ||
-    !candidateYear
-  ) {
+  if (!captionYear || !candidateYear) {
     return 0;
   }
 
-  return captionYear === candidateYear
-    ? 1
-    : -1;
+  return captionYear === candidateYear ? 1 : -1;
 };
 
 const getTextSignal = (
@@ -185,28 +165,16 @@ const getTextSignal = (
     };
   }
 
-  const titleSimilarity =
-    getTitleSimilarity(
-      sourceText,
-      title
-    );
-
-  const originalSimilarity =
+  const similarity = Math.max(
+    getTitleSimilarity(sourceText, title),
     getTitleSimilarity(
       sourceText,
       originalTitle
-    );
-
-  const similarity = Math.max(
-    titleSimilarity,
-    originalSimilarity
+    )
   );
 
   const exact = Math.max(
-    getExactTitleScore(
-      sourceText,
-      title
-    ),
+    getExactTitleScore(sourceText, title),
     getExactTitleScore(
       sourceText,
       originalTitle
@@ -214,10 +182,7 @@ const getTextSignal = (
   );
 
   const overlap = Math.max(
-    getWordOverlap(
-      sourceText,
-      title
-    ),
+    getWordOverlap(sourceText, title),
     getWordOverlap(
       sourceText,
       originalTitle
@@ -353,63 +318,52 @@ const calculateCandidateScore = ({
   speechText = "",
   visualSignals = [],
 }) => {
-  const title =
-    candidate.title || "";
-
+  const title = candidate.title || "";
   const originalTitle =
     candidate.originalTitle || "";
 
-  const captionSignal =
-    getTextSignal(
-      extractedCaptionTitle,
-      title,
-      originalTitle
-    );
+  const captionSignal = getTextSignal(
+    extractedCaptionTitle,
+    title,
+    originalTitle
+  );
 
-  const ocrSignal =
-    getBestTextSignal(
-      ocrText,
-      title,
-      originalTitle
-    );
+  const ocrSignal = getBestTextSignal(
+    ocrText,
+    title,
+    originalTitle
+  );
 
-  const speechSignal =
-    getBestTextSignal(
-      speechText,
-      title,
-      originalTitle
-    );
+  const speechSignal = getBestTextSignal(
+    speechText,
+    title,
+    originalTitle
+  );
 
-  const visualSignal =
-    getVisualSignal(
-      visualSignals,
-      title,
-      originalTitle
-    );
+  const visualSignal = getVisualSignal(
+    visualSignals,
+    title,
+    originalTitle
+  );
 
-  const candidateYear =
-    getYear(
-      candidate.releaseDate
-    );
+  const candidateYear = getYear(
+    candidate.releaseDate
+  );
 
-  const yearScore =
-    getYearScore(
-      captionYear,
-      candidateYear
-    );
+  const yearScore = getYearScore(
+    captionYear,
+    candidateYear
+  );
 
-  const typeScore =
-    getTypeScore(
-      captionType,
-      candidate.contentType
-    );
+  const typeScore = getTypeScore(
+    captionType,
+    candidate.contentType
+  );
 
   let finalScore = 0;
   let evidenceType = "none";
 
-  if (
-    captionSignal.exact === 1
-  ) {
+  if (captionSignal.exact === 1) {
     finalScore = 0.98;
 
     if (yearScore === 1) {
@@ -426,9 +380,7 @@ const calculateCandidateScore = ({
     );
 
     evidenceType = "caption-exact";
-  } else if (
-    extractedCaptionTitle
-  ) {
+  } else if (extractedCaptionTitle) {
     finalScore =
       captionSignal.similarity * 0.65 +
       captionSignal.overlap * 0.2 +
@@ -505,9 +457,7 @@ const calculateCandidateScore = ({
       Number(hasStrongSpeech) +
       Number(hasStrongVisual);
 
-    if (
-      strongEvidenceCount === 0
-    ) {
+    if (strongEvidenceCount === 0) {
       finalScore = Math.min(
         finalScore,
         0.39
@@ -519,66 +469,52 @@ const calculateCandidateScore = ({
       hasStrongSpeech
     ) {
       evidenceType = "text";
-    } else if (
-      hasStrongVisual
-    ) {
+    } else if (hasStrongVisual) {
       evidenceType = "visual";
     }
   }
 
   finalScore = Math.max(
     0,
-    Math.min(
-      finalScore,
-      1
-    )
+    Math.min(finalScore, 1)
   );
 
   return {
     title,
-    contentType:
-      candidate.contentType,
+    contentType: candidate.contentType,
     extractedCaptionTitle,
     captionYear,
     captionType,
-    captionTitleScore:
-      Number(
-        captionSignal.similarity.toFixed(4)
-      ),
-    ocrTitleScore:
-      Number(
-        ocrSignal.similarity.toFixed(4)
-      ),
-    speechTitleScore:
-      Number(
-        speechSignal.similarity.toFixed(4)
-      ),
-    visualTitleScore:
-      Number(
-        visualSignal.similarity.toFixed(4)
-      ),
+    captionTitleScore: Number(
+      captionSignal.similarity.toFixed(4)
+    ),
+    ocrTitleScore: Number(
+      ocrSignal.similarity.toFixed(4)
+    ),
+    speechTitleScore: Number(
+      speechSignal.similarity.toFixed(4)
+    ),
+    visualTitleScore: Number(
+      visualSignal.similarity.toFixed(4)
+    ),
     captionTitleExact:
       captionSignal.exact,
-    ocrExact:
-      ocrSignal.exact,
+    ocrExact: ocrSignal.exact,
     speechExact:
       speechSignal.exact,
     yearScore,
     typeScore,
     evidenceType,
-    finalScore:
-      Number(
-        finalScore.toFixed(4)
-      ),
+    finalScore: Number(
+      finalScore.toFixed(4)
+    ),
   };
 };
 
 const isStrongCaptionMatch = (
   signal
 ) => {
-  if (
-    !signal.extractedCaptionTitle
-  ) {
+  if (!signal.extractedCaptionTitle) {
     return false;
   }
 
@@ -599,9 +535,7 @@ const isStrongCaptionMatch = (
 const isStrongTextMatch = (
   signal
 ) => {
-  if (
-    signal.extractedCaptionTitle
-  ) {
+  if (signal.extractedCaptionTitle) {
     return false;
   }
 
@@ -628,7 +562,7 @@ const matchSceneCandidates = ({
       "No scene candidates available."
     );
 
-    return null;
+    return [];
   }
 
   const scoredCandidates =
@@ -665,11 +599,7 @@ const matchSceneCandidates = ({
     scoredCandidates[0];
 
   if (!best) {
-    console.log(
-      "No best scene candidate found."
-    );
-
-    return null;
+    return [];
   }
 
   if (
@@ -677,20 +607,18 @@ const matchSceneCandidates = ({
       best.signal
     )
   ) {
-    console.log(
-      "Strong caption title match accepted:",
-      best.signal
-    );
-
-    return {
-      ...best.candidate,
-      sceneScore:
-        best.signal.finalScore,
-      confidence:
-        Math.round(
+    return [
+      {
+        ...best.candidate,
+        sceneScore:
+          best.signal.finalScore,
+        confidence: Math.round(
           best.signal.finalScore * 100
         ),
-    };
+        evidenceType:
+          best.signal.evidenceType,
+      },
+    ];
   }
 
   const strongCandidates =
@@ -699,77 +627,67 @@ const matchSceneCandidates = ({
         isStrongTextMatch(signal)
     );
 
-  if (
-    !strongCandidates.length
-  ) {
+  if (!strongCandidates.length) {
     console.log(
       "No scene candidates passed the minimum score."
     );
 
-    return null;
+    return [];
   }
+
+  const strongBest =
+    strongCandidates[0];
 
   const second =
     strongCandidates[1];
 
   if (
     second &&
-    best.signal.finalScore -
+    strongBest.signal.finalScore -
       second.signal.finalScore <
       0.08
   ) {
     const sameTitle =
       normalizeTitle(
-        best.candidate.title
+        strongBest.candidate.title
       ) ===
       normalizeTitle(
         second.candidate.title
       );
 
-    const bestYear =
-      getYear(
-        best.candidate.releaseDate
-      );
+    const bestYear = getYear(
+      strongBest.candidate.releaseDate
+    );
 
-    const secondYear =
-      getYear(
-        second.candidate.releaseDate
-      );
+    const secondYear = getYear(
+      second.candidate.releaseDate
+    );
 
     const sameYear =
       Boolean(bestYear) &&
       bestYear === secondYear;
 
-    if (
-      !sameTitle ||
-      !sameYear
-    ) {
+    if (!sameTitle || !sameYear) {
       console.log(
-        "Scene candidates too close to confidently select:",
-        {
-          best: best.signal,
-          second: second.signal,
-        }
+        "Scene candidates too close to confidently select."
       );
 
-      return null;
+      return [];
     }
   }
 
-  console.log(
-    "Best scene candidate accepted:",
-    best.signal
-  );
-
-  return {
-    ...best.candidate,
-    sceneScore:
-      best.signal.finalScore,
-    confidence:
-      Math.round(
-        best.signal.finalScore * 100
+  return [
+    {
+      ...strongBest.candidate,
+      sceneScore:
+        strongBest.signal.finalScore,
+      confidence: Math.round(
+        strongBest.signal.finalScore * 100
       ),
-  };
+      evidenceType:
+        strongBest.signal.evidenceType,
+    },
+  ];
 };
 
 module.exports = {
