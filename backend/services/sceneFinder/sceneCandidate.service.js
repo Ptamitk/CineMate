@@ -697,7 +697,7 @@ const findSceneCandidates = async ({
   console.log(
     "Scene candidate search:",
     {
-      queries,
+      queries: searchQueries,
       extractedCaptionTitle:
         captionInfo.title,
       candidateCount:
@@ -715,7 +715,7 @@ const findSceneCandidates = async ({
       captionInfo.year,
     captionType:
       captionInfo.type,
-    queries,
+    queries: searchQueries,
     visualSignals,
   };
 };
