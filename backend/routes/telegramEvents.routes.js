@@ -13,7 +13,7 @@ const router = express.Router();
 router.get(
   "/stream",
   authMiddleware,
-  (req, res) => {
+  async (req, res) => {
     const userId =
       req.userId.toString();
 
@@ -178,7 +178,7 @@ router.get(
             status: job.status,
             result: job.result || null,
             error: job.error || "",
-          })}\\n\\n`
+          })}\n\n`
         );
       }
     } catch (error) {
