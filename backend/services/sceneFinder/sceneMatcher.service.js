@@ -645,6 +645,29 @@ const calculateCandidateScore = ({
           ? "text-multi-signal"
           : "text";
     } else if (hasStrongVisual) {
+      /*
+       * CLIP is a second-stage classifier, so its raw probability
+       * should not be forced through the same weighted formula as
+       * OCR/speech similarity. Once the candidate clears the
+       * average/max/margin gates above, give visual evidence a
+       * bounded floor that allows a genuinely strong visual match
+       * to pass while keeping the margin as an important safeguard.
+       */
+      const visualConfidenceFloor =
+        0.62 +
+        Math.min(
+          Math.max(
+            visualSignal.clipMargin - 0.08,
+            0
+          ) * 0.5,
+          0.12
+        );
+
+      finalScore = Math.max(
+        finalScore,
+        visualConfidenceFloor
+      );
+
       evidenceType = "visual";
     }
   }
