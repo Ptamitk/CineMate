@@ -110,9 +110,14 @@ sceneFinderJobSchema.index(
   { user: 1, reelUrl: 1 },
   {
     unique: true,
+    name: "scene_finder_active_reel_unique",
     partialFilterExpression: {
       status: {
         $in: ["pending", "processing"],
+      },
+      reelUrl: {
+        $type: "string",
+        $gt: "",
       },
     },
   }
