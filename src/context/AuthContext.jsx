@@ -112,6 +112,7 @@ let stopped = false;
 let reconnectTimer = null;
 let controller = null;
 let reconnectDelay = 1000;
+const seenSceneEvents = new Set();
 
 const connectTelegramStream = async () => {
   if (stopped) {
@@ -191,6 +192,29 @@ const connectTelegramStream = async () => {
           }
 
           if (data.type === "scene") {
+            const sceneEventKey =
+              data.jobId
+                ? `${data.jobId}:${data.status || "unknown"}`
+                : "";
+
+            if (
+              sceneEventKey &&
+              seenSceneEvents.has(sceneEventKey)
+            ) {
+              continue;
+            }
+
+            if (sceneEventKey) {
+              seenSceneEvents.add(sceneEventKey);
+
+              if (seenSceneEvents.size > 100) {
+                const oldestKey =
+                  seenSceneEvents.values().next().value;
+
+                seenSceneEvents.delete(oldestKey);
+              }
+            }
+
             setTelegramSceneResult(data);
           }
         } catch (error) {
