@@ -228,6 +228,33 @@ const releaseSceneFinderJob = async (
   );
 };
 
+const canCleanupUploadedVideo = async (jobId) => {
+  try {
+    const job = await SceneFinderJob.findById(jobId)
+      .select("status workerId")
+      .lean();
+
+    if (!job) {
+      return true;
+    }
+
+    if (job.status !== "processing") {
+      return true;
+    }
+
+    return job.workerId === WORKER_ID;
+  } catch (error) {
+    console.error(
+      "Scene Finder upload cleanup ownership check failed:",
+      error.message
+    );
+
+    // If ownership cannot be verified, leave the upload for
+    // stale-temp cleanup rather than risking another worker's file.
+    return false;
+  }
+};
+
 const processSceneFinderJob = async (
   jobId,
   uploadedVideo = null
@@ -578,9 +605,16 @@ const processSceneFinderJob = async (
       clearInterval(heartbeatTimer);
     }
 
+    const safeToCleanupUpload =
+      uploadedVideo && !leaseLost
+        ? await canCleanupUploadedVideo(jobId)
+        : false;
+
     await cleanupSceneFiles({
       uploadedVideo:
-        leaseLost ? null : uploadedVideo,
+        safeToCleanupUpload
+          ? uploadedVideo
+          : null,
       frameDirectory,
       audioDirectory,
     });
