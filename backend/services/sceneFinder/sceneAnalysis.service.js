@@ -78,18 +78,47 @@ const analyzeScene = async ({
           candidate.title,
           candidate.originalTitle,
         ])
-    ).slice(0, 24);
+    ).slice(0, 60);
 
-    visualRecognition =
+    /*
+     * Two-stage visual retrieval:
+     * 1) Broad pass: compare a balanced set of frames against a
+     *    larger title pool to avoid missing the real title.
+     * 2) Refined pass: re-check the strongest titles across the
+     *    complete video frame selection.
+     *
+     * This is much safer than either checking only 24 titles or
+     * running the expensive full pool against every frame.
+     */
+    const broadVisualRecognition =
       await analyzeVisualRecognition({
-        frameFiles: visualFrames.slice(0, 6),
+        frameFiles: selectUsefulFrames({
+          frameFiles: visualFrames,
+          maxFrames: 4,
+        }),
         candidateLabels:
           visualCandidateLabels,
       });
 
+    const refinedLabels = unique(
+      broadVisualRecognition.matches
+        .slice(0, 20)
+        .map((match) => match.label)
+    );
+
+    if (refinedLabels.length) {
+      visualRecognition =
+        await analyzeVisualRecognition({
+          frameFiles: visualFrames,
+          candidateLabels: refinedLabels,
+        });
+    } else {
+      visualRecognition = broadVisualRecognition;
+    }
+
     console.log(
       "CLIP visual candidate matches:",
-      visualRecognition.matches.slice(0, 5)
+      visualRecognition.matches.slice(0, 10)
     );
   }
 
