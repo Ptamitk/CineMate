@@ -2,6 +2,7 @@ import {
 createContext,
 useContext,
 useEffect,
+useRef,
 useState,
 } from "react";
 
@@ -25,6 +26,9 @@ useState(null);
 /* TELEGRAM SCENE FINDER */
 const [telegramSceneResult, setTelegramSceneResult] =
 useState(null);
+
+const seenSceneEventsRef = useRef(new Set());
+const latestSceneEventTimesRef = useRef(new Map());
 
 useEffect(() => {
 const restoreAuth = async () => {
@@ -116,8 +120,8 @@ let stopped = false;
 let reconnectTimer = null;
 let controller = null;
 let reconnectDelay = 1000;
-const seenSceneEvents = new Set();
-const latestSceneEventTimes = new Map();
+const seenSceneEvents = seenSceneEventsRef.current;
+const latestSceneEventTimes = latestSceneEventTimesRef.current;
 
 const connectTelegramStream = async () => {
   if (stopped) {
