@@ -178,7 +178,8 @@ router.get(
             status: job.status,
             result: job.result || null,
             error: job.error || "",
-          })}\n\n`
+          updatedAt: job.updatedAt,
+        })}\n\n`
         );
       }
     } catch (error) {
