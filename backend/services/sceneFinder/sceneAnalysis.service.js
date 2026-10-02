@@ -59,8 +59,7 @@ const analyzeScene = async ({
 
   /*
    * CLIP is used as a second-stage reranker.
-   * Candidate generation still comes from caption/OCR/speech,
-   * so vision cannot invent an unrelated TMDB title.
+   * Candidate generation uses caption/OCR/speech first, with visual descriptions as a bounded fallback when text is unavailable.
    *
    * Keep the label set bounded because zero-shot image
    * classification evaluates the supplied candidate labels
@@ -74,7 +73,7 @@ const analyzeScene = async ({
   if (candidates.length && visualFrames.length) {
     const visualCandidateLabels = unique(
       candidates
-        .slice(0, 20)
+        .slice(0, 30)
         .flatMap((candidate) => [
           candidate.title,
           candidate.originalTitle,
