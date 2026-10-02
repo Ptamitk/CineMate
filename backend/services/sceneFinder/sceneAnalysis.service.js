@@ -58,12 +58,12 @@ const analyzeScene = async ({
     candidateResult?.candidates || [];
 
   /*
-   * CLIP is used as a second-stage reranker.
-   * Candidate generation uses caption/OCR/speech first, with visual descriptions as a bounded fallback when text is unavailable.
+   * CLIP is the visual verification stage.
+   * When text discovery fails, candidate generation supplies a
+   * bounded TMDB pool so CLIP can search by actual media titles.
    *
-   * Keep the label set bounded because zero-shot image
-   * classification evaluates the supplied candidate labels
-   * for every frame.
+   * Keep the pool bounded because zero-shot image classification
+   * evaluates every supplied candidate label for every frame.
    */
   let visualRecognition = {
     framesAnalyzed: 0,
@@ -73,7 +73,7 @@ const analyzeScene = async ({
   if (candidates.length && visualFrames.length) {
     const visualCandidateLabels = unique(
       candidates
-        .slice(0, 24)
+        .slice(0, 120)
         .flatMap((candidate) => [
           candidate.title,
           candidate.originalTitle,
