@@ -94,6 +94,16 @@ const sceneFinderJobSchema = new mongoose.Schema(
         type: Number,
         default: null,
       },
+
+      sceneScore: {
+        type: Number,
+        default: null,
+      },
+
+      evidenceType: {
+        type: String,
+        default: "",
+      },
     },
 
     error: {
