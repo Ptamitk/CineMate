@@ -17,8 +17,25 @@ const PROCESSING_STALE_MS = Math.max(
   )
 );
 
-const MAX_QUEUE_RETRIES = 3;
-const RETRY_BASE_DELAY_MS = 2000;
+const MAX_QUEUE_RETRIES = Math.max(
+  3,
+  Number(
+    process.env.SCENE_FINDER_MAX_QUEUE_RETRIES || 8
+  )
+);
+const RETRY_BASE_DELAY_MS = Math.max(
+  1000,
+  Number(
+    process.env.SCENE_FINDER_RETRY_BASE_DELAY_MS || 2000
+  )
+);
+const RETRY_MAX_DELAY_MS = Math.max(
+  RETRY_BASE_DELAY_MS,
+  Number(
+    process.env.SCENE_FINDER_RETRY_MAX_DELAY_MS ||
+      60 * 1000
+  )
+);
 
 const queue = [];
 const activeJobs = new Set();
@@ -65,7 +82,7 @@ const scheduleRetry = (
         jobId +
         " could not be claimed after " +
         MAX_QUEUE_RETRIES +
-        " retries."
+        " retries; leaving it recoverable for the queue watchdog/startup recovery."
     );
 
     return;
@@ -73,9 +90,11 @@ const scheduleRetry = (
 
   retryCounts.set(jobId, attempts);
 
-  const delay =
+  const delay = Math.min(
+    RETRY_MAX_DELAY_MS,
     RETRY_BASE_DELAY_MS *
-    2 ** (attempts - 1);
+      2 ** (attempts - 1)
+  );
 
   const timer = setTimeout(() => {
     if (
