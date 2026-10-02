@@ -94,6 +94,8 @@ framePath,
 {
 candidate_labels:
 candidateLabels,
+hypothesis_template:
+"A scene from {}",
 }
 );
 
