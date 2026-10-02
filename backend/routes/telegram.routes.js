@@ -88,6 +88,20 @@ const sendTelegramMessage = async (
 router.post(
   "/webhook",
   async (req, res) => {
+    const webhookSecret =
+      process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
+
+    if (webhookSecret) {
+      const receivedSecret =
+        req.get("X-Telegram-Bot-Api-Secret-Token");
+
+      if (
+        !receivedSecret ||
+        receivedSecret !== webhookSecret
+      ) {
+        return res.sendStatus(401);
+      }
+    }
     try {
       const message =
         req.body?.message;
