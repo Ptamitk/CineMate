@@ -17,8 +17,12 @@ const PROCESSING_STALE_MS = Math.max(
   )
 );
 
+const MAX_QUEUE_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 2000;
+
 const queue = [];
 const activeJobs = new Set();
+const retryCounts = new Map();
 let draining = false;
 
 const enqueueSceneFinderJob = (
@@ -27,9 +31,7 @@ const enqueueSceneFinderJob = (
 ) => {
   const normalizedJobId = String(jobId);
 
-  if (activeJobs.has(normalizedJobId)) {
-    return false;
-  }
+  if (activeJobs.has(normalizedJobId)) return false;
 
   if (
     queue.some(
@@ -48,16 +50,63 @@ const enqueueSceneFinderJob = (
   return true;
 };
 
+const scheduleRetry = (
+  jobId,
+  uploadedVideo
+) => {
+  const attempts =
+    (retryCounts.get(jobId) || 0) + 1;
+
+  if (attempts > MAX_QUEUE_RETRIES) {
+    retryCounts.delete(jobId);
+
+    console.error(
+      "Scene Finder job " +
+        jobId +
+        " could not be claimed after " +
+        MAX_QUEUE_RETRIES +
+        " retries."
+    );
+
+    return;
+  }
+
+  retryCounts.set(jobId, attempts);
+
+  const delay =
+    RETRY_BASE_DELAY_MS *
+    2 ** (attempts - 1);
+
+  const timer = setTimeout(() => {
+    if (
+      !activeJobs.has(jobId) &&
+      !queue.some(
+        (item) => item.jobId === jobId
+      )
+    ) {
+      queue.push({
+        jobId,
+        uploadedVideo,
+      });
+
+      drainQueue();
+    }
+  }, delay);
+
+  timer.unref?.();
+};
+
 const runNextJob = async () => {
-  if (activeJobs.size >= MAX_CONCURRENT_JOBS) {
+  if (
+    activeJobs.size >=
+    MAX_CONCURRENT_JOBS
+  ) {
     return;
   }
 
   const next = queue.shift();
 
-  if (!next) {
-    return;
-  }
+  if (!next) return;
 
   activeJobs.add(next.jobId);
 
@@ -66,10 +115,17 @@ const runNextJob = async () => {
       next.jobId,
       next.uploadedVideo
     );
+
+    retryCounts.delete(next.jobId);
   } catch (error) {
     console.error(
       "Scene Finder Queue Job Error:",
       error.message
+    );
+
+    scheduleRetry(
+      next.jobId,
+      next.uploadedVideo
     );
   } finally {
     activeJobs.delete(next.jobId);
@@ -78,9 +134,7 @@ const runNextJob = async () => {
 };
 
 const drainQueue = () => {
-  if (draining) {
-    return;
-  }
+  if (draining) return;
 
   draining = true;
 
@@ -110,9 +164,7 @@ const recoverSceneFinderJobs = async () => {
   const jobs =
     await SceneFinderJob.find({
       $or: [
-        {
-          status: "pending",
-        },
+        { status: "pending" },
         {
           status: "processing",
           processingHeartbeatAt: {
@@ -146,7 +198,9 @@ const recoverSceneFinderJobs = async () => {
 
   if (jobs.length) {
     console.log(
-      `Recovered ${jobs.length} Scene Finder job(s).`
+      "Recovered " +
+        jobs.length +
+        " Scene Finder job(s)."
     );
   }
 };
