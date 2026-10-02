@@ -9,6 +9,10 @@ const AuthContext = createContext(null);
 
 const AUTH_STORAGE_KEY = "cinemate_auth";
 
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  "http://localhost:5000";
+
 export const AuthProvider = ({ children }) => {
 const [user, setUser] = useState(null);
 const [token, setToken] = useState(null);
@@ -47,7 +51,7 @@ localStorage.getItem(AUTH_STORAGE_KEY);
     }
 
     const response = await fetch(
-      "http://localhost:5000/api/auth/me",
+      `${API_BASE_URL}/api/auth/me`,
       {
         method: "GET",
         headers: {
@@ -113,6 +117,7 @@ let reconnectTimer = null;
 let controller = null;
 let reconnectDelay = 1000;
 const seenSceneEvents = new Set();
+const latestSceneEventTimes = new Map();
 
 const connectTelegramStream = async () => {
   if (stopped) {
@@ -123,7 +128,7 @@ const connectTelegramStream = async () => {
 
   try {
     const response = await fetch(
-      "http://localhost:5000/api/telegram-events/search-stream",
+      `${API_BASE_URL}/api/telegram-events/search-stream`,
       {
         method: "GET",
         headers: {
@@ -192,6 +197,26 @@ const connectTelegramStream = async () => {
           }
 
           if (data.type === "scene") {
+            if (data.jobId && data.updatedAt) {
+              const incomingTime =
+                new Date(data.updatedAt).getTime();
+              const previousTime =
+                latestSceneEventTimes.get(data.jobId) || 0;
+
+              if (
+                Number.isFinite(incomingTime) &&
+                incomingTime < previousTime
+              ) {
+                continue;
+              }
+
+              if (Number.isFinite(incomingTime)) {
+                latestSceneEventTimes.set(
+                  data.jobId,
+                  incomingTime
+                );
+              }
+            }
             const sceneEventKey =
               data.jobId
                 ? `${data.jobId}:${data.status || "unknown"}`
