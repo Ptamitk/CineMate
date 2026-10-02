@@ -108,10 +108,18 @@ setTelegramSceneResult(null);
 return;
 }
 
-
-const controller = new AbortController();
+let stopped = false;
+let reconnectTimer = null;
+let controller = null;
+let reconnectDelay = 1000;
 
 const connectTelegramStream = async () => {
+  if (stopped) {
+    return;
+  }
+
+  controller = new AbortController();
+
   try {
     const response = await fetch(
       "http://localhost:5000/api/telegram-events/search-stream",
@@ -137,63 +145,43 @@ const connectTelegramStream = async () => {
       );
     }
 
-    const reader =
-      response.body.getReader();
+    reconnectDelay = 1000;
 
-    const decoder =
-      new TextDecoder();
-
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
     let buffer = "";
 
-    while (true) {
-      const {
-        value,
-        done,
-      } = await reader.read();
+    while (!stopped) {
+      const { value, done } = await reader.read();
 
       if (done) {
         break;
       }
 
-      buffer += decoder.decode(
-        value,
-        {
-          stream: true,
-        }
-      );
+      buffer += decoder.decode(value, { stream: true });
 
-      const events =
-        buffer.split("\n\n");
-
-      buffer =
-        events.pop() || "";
+      const events = buffer.split("\n\n");
+      buffer = events.pop() || "";
 
       for (const event of events) {
-        const dataLine =
-          event
-            .split("\n")
-            .find((line) =>
-              line.startsWith("data:")
-            );
+        const dataLine = event
+          .split("\n")
+          .find((line) => line.startsWith("data:"));
 
         if (!dataLine) {
           continue;
         }
 
-        const jsonData =
-          dataLine
-            .replace(/^data:\s*/, "")
-            .trim();
+        const jsonData = dataLine
+          .replace(/^data:\s*/, "")
+          .trim();
 
         if (!jsonData) {
           continue;
         }
 
         try {
-          const data =
-            JSON.parse(jsonData);
-
-          /* MOVIE / TV SEARCH */
+          const data = JSON.parse(jsonData);
 
           if (
             data.type === "search" &&
@@ -202,14 +190,8 @@ const connectTelegramStream = async () => {
             setTelegramSearchResult(data);
           }
 
-          /* SCENE FINDER */
-
-          if (
-            data.type === "scene"
-          ) {
-            setTelegramSceneResult(
-              data
-            );
+          if (data.type === "scene") {
+            setTelegramSceneResult(data);
           }
         } catch (error) {
           console.error(
@@ -219,26 +201,53 @@ const connectTelegramStream = async () => {
         }
       }
     }
+
+    if (!stopped) {
+      scheduleReconnect();
+    }
   } catch (error) {
     if (
-      error.name !==
-      "AbortError"
+      error.name !== "AbortError" &&
+      !stopped
     ) {
       console.error(
         "Telegram SSE Connection Error:",
         error
       );
+
+      scheduleReconnect();
     }
   }
+};
+
+const scheduleReconnect = () => {
+  if (stopped || reconnectTimer) {
+    return;
+  }
+
+  const delay = reconnectDelay;
+  reconnectDelay = Math.min(
+    reconnectDelay * 2,
+    30000
+  );
+
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectTelegramStream();
+  }, delay);
 };
 
 connectTelegramStream();
 
 return () => {
-  controller.abort();
+  stopped = true;
+
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+  }
+
+  controller?.abort();
 };
-
-
 }, [token]);
 
 const login = (authData) => {
