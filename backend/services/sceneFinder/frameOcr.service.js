@@ -2,7 +2,10 @@ const {
 extractTextFromImage,
 } = require("./ocr.service");
 
-const OCR_CONCURRENCY = 3;
+const OCR_CONCURRENCY = Math.max(
+  1,
+  Number(process.env.SCENE_FINDER_OCR_CONCURRENCY || 2)
+);
 
 const extractTextFromFrames = async (
 frameFiles = []
