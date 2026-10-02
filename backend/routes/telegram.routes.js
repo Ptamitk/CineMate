@@ -33,6 +33,43 @@ const MAX_PAIRING_ATTEMPTS =
 
 const pairingAttempts = new Map();
 
+const TELEGRAM_UPDATE_TTL_MS =
+  15 * 60 * 1000;
+
+const processedTelegramUpdates = new Map();
+
+const isDuplicateTelegramUpdate = (
+  updateId
+) => {
+  if (
+    updateId === undefined ||
+    updateId === null
+  ) {
+    return false;
+  }
+
+  const normalizedId = String(updateId);
+  const now = Date.now();
+  const processedAt =
+    processedTelegramUpdates.get(
+      normalizedId
+    );
+
+  if (
+    processedAt &&
+    now - processedAt < TELEGRAM_UPDATE_TTL_MS
+  ) {
+    return true;
+  }
+
+  processedTelegramUpdates.set(
+    normalizedId,
+    now
+  );
+
+  return false;
+};
+
 const isPairingRateLimited = (chatId) => {
   const now = Date.now();
   const entry = pairingAttempts.get(chatId);
@@ -70,6 +107,25 @@ const recordPairingFailure = (chatId) => {
 const clearPairingAttempts = (chatId) => {
   pairingAttempts.delete(chatId);
 };
+
+const telegramUpdateCleanupTimer =
+  setInterval(() => {
+    const cutoff =
+      Date.now() - TELEGRAM_UPDATE_TTL_MS;
+
+    for (
+      const [updateId, processedAt]
+      of processedTelegramUpdates
+    ) {
+      if (processedAt < cutoff) {
+        processedTelegramUpdates.delete(
+          updateId
+        );
+      }
+    }
+  }, TELEGRAM_UPDATE_TTL_MS);
+
+telegramUpdateCleanupTimer.unref?.();
 
 const pairingCleanupTimer = setInterval(() => {
   const cutoff = Date.now() - PAIRING_WINDOW_MS;
@@ -161,6 +217,17 @@ router.post(
       }
     }
     try {
+      const updateId =
+        req.body?.update_id;
+
+      if (
+        isDuplicateTelegramUpdate(
+          updateId
+        )
+      ) {
+        return res.sendStatus(200);
+      }
+
       const message =
         req.body?.message;
 
