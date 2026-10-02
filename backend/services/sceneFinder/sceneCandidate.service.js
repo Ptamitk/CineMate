@@ -633,33 +633,15 @@ const findSceneCandidates = async ({
     queries
   );
 
-  const visualQueries = queries.length
-    ? []
-    : getVisualSearchQueries(visualSignals);
-
-  const searchQueries = unique([
-    ...queries,
-    ...visualQueries,
-  ]).slice(0, 5);
-
-  if (!searchQueries.length) {
-    console.log(
-      "No reliable scene queries found from text or vision."
+  const visualQueries =
+    getVisualSearchQueries(
+      visualSignals
     );
 
-    return {
-      candidates: [],
-      extractedCaptionTitle: "",
-      captionYear: null,
-      captionType: "",
-      queries: [],
-      visualSignals,
-    };
-  }
-
   const allCandidates = [];
+  const searchedQueries = [];
 
-  for (const query of searchQueries) {
+  const searchQuery = async (query) => {
     const year =
       captionInfo.title &&
       normalizeTitle(query) ===
@@ -713,15 +695,52 @@ const findSceneCandidates = async ({
       }
     }
 
+    searchedQueries.push(query);
     allCandidates.push(
       ...results.map(toCandidate).slice(0, 20)
     );
+
+    return results.length;
+  };
+
+  for (const query of queries) {
+    await searchQuery(query);
   }
 
-  const candidates =
+  let candidates =
     deduplicateCandidates(
       allCandidates
     ).slice(0, 60);
+
+  /*
+   * Vision fallback:
+   * Text is preferred because OCR/speech/caption can carry
+   * title-level evidence. If text search produces nothing,
+   * use a small number of visual descriptions to discover
+   * TMDB candidates, then let CLIP/matcher decide.
+   */
+  if (!candidates.length && visualQueries.length) {
+    console.log(
+      "Text candidate search returned 0 candidates. Starting vision candidate fallback:",
+      visualQueries
+    );
+
+    for (const query of visualQueries) {
+      await searchQuery(query);
+
+      candidates =
+        deduplicateCandidates(
+          allCandidates
+        ).slice(0, 60);
+
+      if (candidates.length >= 20) {
+        break;
+      }
+    }
+  }
+
+  const searchQueries =
+    unique(searchedQueries).slice(0, 7);
 
   console.log(
     "Scene candidate search:",
@@ -735,6 +754,12 @@ const findSceneCandidates = async ({
         visualSignals.length,
     }
   );
+
+  if (!searchQueries.length) {
+    console.log(
+      "No reliable scene queries found from text or vision."
+    );
+  }
 
   return {
     candidates,
