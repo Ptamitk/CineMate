@@ -365,22 +365,10 @@ const getBestTextSignal = (
     ...lines,
   ];
 
-  /*
-   * Full OCR/speech text is useful for context, but scoring it
-   * directly can create false positives when a movie title is
-   * only one small phrase inside a long dialogue transcript.
-   * Exact title windows and short lines remain high-signal.
-   */
   if (normalized.split(/\s+/).length <= 12) {
     sources.unshift(normalized);
   }
 
-  /*
-   * Speech/OCR often contains a full sentence around the title.
-   * Compare bounded word windows as well, so:
-   * "this scene is from Interstellar movie" can still
-   * produce an exact/near-exact title signal.
-   */
   const addWordWindows = (text) => {
     const words = text
       .split(/\s+/)
@@ -490,12 +478,6 @@ const getVisualSignal = (
     );
 
     if (matched) {
-      /*
-       * Raw CLIP probabilities depend on the size of the
-       * candidate-label set. The visual fallback can now
-       * supply a much larger TMDB pool, so use the calibrated
-       * within-frame relative scores as the primary signal.
-       */
       clipAverage = Math.max(
         Number(
           matched.averageScore || 0
@@ -514,14 +496,6 @@ const getVisualSignal = (
         )
       );
 
-      /*
-       * framesMatched means the label was returned by CLIP, which
-       * happens for every label on every frame. It is therefore not
-       * evidence that the title actually matched the frame.
-       *
-       * topFrameCount is the meaningful count: frames where this
-       * title was close to the strongest label for that frame.
-       */
       clipFramesMatched = Number(
         matched.topFrameCount || 0
       );
@@ -706,7 +680,6 @@ const calculateCandidateScore = ({
 
     const hasStrongOcr =
       ocrSignal.exact === 1 ||
-
       (
         ocrSignal.similarity >= 0.78 &&
         ocrSignal.overlap >= 0.5
@@ -719,17 +692,18 @@ const calculateCandidateScore = ({
         speechSignal.overlap >= 0.5
       );
 
+    /*
+     * Visual-only identification is deliberately conservative.
+     * CLIP zero-shot title classification can produce a high score
+     * simply because one title happens to be more compatible with
+     * the supplied candidate set. Require repeated frame agreement
+     * plus a meaningful average and margin before accepting it.
+     */
     const hasStrongVisual =
-      visualSignal.clipMax >= 0.45 &&
-      visualSignal.clipAverage >= 0.25 &&
-      visualSignal.clipMargin >= 0.08 &&
-      (
-        visualSignal.clipFramesMatched >= 2 ||
-        (
-          visualSignal.clipMax >= 0.65 &&
-          visualSignal.clipMargin >= 0.12
-        )
-      );
+      visualSignal.clipAverage >= 0.34 &&
+      visualSignal.clipMax >= 0.60 &&
+      visualSignal.clipMargin >= 0.12 &&
+      visualSignal.clipFramesMatched >= 3;
 
     finalScore =
       ocrScore * 0.5 +
@@ -769,11 +743,6 @@ const calculateCandidateScore = ({
       );
     }
 
-    /*
-     * One weak text signal must not be enough to
-     * identify a movie. Exact OCR/speech is allowed,
-     * otherwise require independent agreement.
-     */
     if (
       independentTextSignals === 1 &&
       !(
@@ -797,21 +766,18 @@ const calculateCandidateScore = ({
           : "text";
     } else if (hasStrongVisual) {
       /*
-       * CLIP is a second-stage classifier, so its raw probability
-       * should not be forced through the same weighted formula as
-       * OCR/speech similarity. Once the candidate clears the
-       * average/max/margin gates above, give visual evidence a
-       * bounded floor that allows a genuinely strong visual match
-       * to pass while keeping the margin as an important safeguard.
+       * CLIP is useful as a verifier, not as proof by itself.
+       * Keep a bounded visual floor rather than turning a forced
+       * top candidate into a high-confidence identification.
        */
       const visualConfidenceFloor =
         0.62 +
         Math.min(
           Math.max(
-            visualSignal.clipMargin - 0.08,
+            visualSignal.clipMargin - 0.12,
             0
-          ) * 0.5,
-          0.12
+          ) * 0.4,
+          0.08
         );
 
       finalScore = Math.max(
@@ -1101,11 +1067,6 @@ const matchSceneCandidates = ({
       strongBest.candidate.contentType ===
         second.candidate.contentType;
 
-    /*
-     * A movie and a series can legitimately share the same title
-     * and release year. Treat them as ambiguous unless their
-     * content types also agree.
-     */
     if (!sameTitle || !sameYear || !sameType) {
       console.log(
         "Scene candidates too close to confidently select."
