@@ -15,7 +15,7 @@ const {
 
 const {
   processSceneFinderJob,
-} = require("../workers/sceneFinder.worker");
+} = require("../services/sceneFinder/sceneJobQueue.service");
 
 const SceneFinderJob =
   require("../models/sceneFinderJob.model");
@@ -267,7 +267,7 @@ router.post(
 
         res.sendStatus(200);
 
-        processSceneFinderJob(
+        enqueueSceneFinderJob(
           job._id.toString()
         ).catch((error) => {
           console.error(
