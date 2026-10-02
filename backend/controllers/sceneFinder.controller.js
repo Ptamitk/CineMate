@@ -23,6 +23,7 @@ const job = await SceneFinderJob.create({
   user: req.userId,
   reelUrl: reelUrl?.trim() || "",
   videoPath: uploadedVideo || "",
+  source: "web",
   status: "pending",
 });
 
