@@ -4,6 +4,14 @@ const os = require("os");
 const fs = require("fs");
 const crypto = require("crypto");
 
+const MAX_VIDEO_UPLOAD_BYTES = Math.max(
+  5 * 1024 * 1024,
+  Number(
+    process.env.SCENE_FINDER_MAX_UPLOAD_BYTES ||
+      100 * 1024 * 1024
+  )
+);
+
 const uploadDirectory = path.join(
 os.tmpdir(),
 "cinemate-scene-uploads"
@@ -68,7 +76,7 @@ storage,
 fileFilter,
 limits: {
 fileSize:
-100 * 1024 * 1024,
+MAX_VIDEO_UPLOAD_BYTES,
 },
 });
 
