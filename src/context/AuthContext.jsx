@@ -113,6 +113,8 @@ useEffect(() => {
 if (!token) {
 setTelegramSearchResult(null);
 setTelegramSceneResult(null);
+seenSceneEventsRef.current.clear();
+latestSceneEventTimesRef.current.clear();
 return;
 }
 
