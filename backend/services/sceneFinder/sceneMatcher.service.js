@@ -514,13 +514,16 @@ const getVisualSignal = (
         )
       );
 
-      clipFramesMatched = Math.max(
-        Number(
-          matched.topFrameCount || 0
-        ),
-        Number(
-          matched.framesMatched || 0
-        )
+      /*
+       * framesMatched means the label was returned by CLIP, which
+       * happens for every label on every frame. It is therefore not
+       * evidence that the title actually matched the frame.
+       *
+       * topFrameCount is the meaningful count: frames where this
+       * title was close to the strongest label for that frame.
+       */
+      clipFramesMatched = Number(
+        matched.topFrameCount || 0
       );
 
       const competitors =
