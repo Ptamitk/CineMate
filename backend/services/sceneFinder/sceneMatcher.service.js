@@ -274,6 +274,32 @@ const getBestTextSignal = (
     ...lines,
   ];
 
+  /*
+   * Speech/OCR often contains a full sentence around the title.
+   * Compare bounded word windows as well, so:
+   * "this scene is from Interstellar movie" can still
+   * produce an exact/near-exact title signal.
+   */
+  const addWordWindows = (text) => {
+    const words = text
+      .split(/\s+/)
+      .filter(Boolean);
+
+    const windows = [];
+
+    for (let size = 2; size <= Math.min(8, words.length); size += 1) {
+      for (let start = 0; start + size <= words.length; start += 1) {
+        windows.push(words.slice(start, start + size).join(" "));
+      }
+    }
+
+    return windows;
+  };
+
+  sources.push(
+    ...lines.flatMap(addWordWindows).slice(0, 80)
+  );
+
   let best = {
     similarity: 0,
     exact: 0,
