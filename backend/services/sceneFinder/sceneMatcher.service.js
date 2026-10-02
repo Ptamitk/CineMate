@@ -270,9 +270,18 @@ const getBestTextSignal = (
     );
 
   const sources = [
-    normalized,
     ...lines,
   ];
+
+  /*
+   * Full OCR/speech text is useful for context, but scoring it
+   * directly can create false positives when a movie title is
+   * only one small phrase inside a long dialogue transcript.
+   * Exact title windows and short lines remain high-signal.
+   */
+  if (normalized.split(/\s+/).length <= 12) {
+    sources.unshift(normalized);
+  }
 
   /*
    * Speech/OCR often contains a full sentence around the title.
