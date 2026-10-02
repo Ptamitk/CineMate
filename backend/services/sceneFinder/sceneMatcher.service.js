@@ -490,14 +490,37 @@ const getVisualSignal = (
     );
 
     if (matched) {
-      clipAverage = Number(
-        matched.averageScore || 0
+      /*
+       * Raw CLIP probabilities depend on the size of the
+       * candidate-label set. The visual fallback can now
+       * supply a much larger TMDB pool, so use the calibrated
+       * within-frame relative scores as the primary signal.
+       */
+      clipAverage = Math.max(
+        Number(
+          matched.averageScore || 0
+        ),
+        Number(
+          matched.relativeAverageScore || 0
+        )
       );
-      clipMax = Number(
-        matched.maxScore || 0
+
+      clipMax = Math.max(
+        Number(
+          matched.maxScore || 0
+        ),
+        Number(
+          matched.relativeMaxScore || 0
+        )
       );
-      clipFramesMatched = Number(
-        matched.framesMatched || 0
+
+      clipFramesMatched = Math.max(
+        Number(
+          matched.topFrameCount || 0
+        ),
+        Number(
+          matched.framesMatched || 0
+        )
       );
 
       const competitors =
@@ -509,7 +532,14 @@ const getVisualSignal = (
               )
           )
           .map((item) =>
-            Number(item?.averageScore || 0)
+            Math.max(
+              Number(
+                item?.averageScore || 0
+              ),
+              Number(
+                item?.relativeAverageScore || 0
+              )
+            )
           );
 
       const bestCompetitor =
