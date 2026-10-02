@@ -976,6 +976,7 @@ const matchSceneCandidates = ({
   speechText = "",
   visualSignals = [],
   visualRecognitionMatches = [],
+  artworkSimilarityMatches = [],
 }) => {
   if (
     !Array.isArray(candidates) ||
