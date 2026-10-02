@@ -529,8 +529,6 @@ const searchMulti = async (query) => {
 const discoverFallbackCandidates = async ({
   captionType = "",
 }) => {
-  const discovered = [];
-
   const mediaTypes =
     captionType === "movie"
       ? ["movie"]
@@ -538,57 +536,127 @@ const discoverFallbackCandidates = async ({
         ? ["tv"]
         : ["movie", "tv"];
 
-  const discoverPages = async (mediaType, params) => {
-    for (const page of [1, 2]) {
-      const data = await tmdbRequest(
-        `/discover/${mediaType}`,
-        {
-          language: params.language,
-          region: params.region,
-          with_original_language:
-            params.withOriginalLanguage || undefined,
-          include_adult: false,
-          include_video:
-            mediaType === "movie" ? false : undefined,
-          include_null_first_air_dates:
-            mediaType === "tv" ? false : undefined,
-          sort_by: "popularity.desc",
-          page,
-          vote_count_gte: 10,
-        }
-      );
+  /*
+   * A popularity-only pool is biased toward currently trending titles.
+   * Reels frequently contain older Indian movies/series, so build a
+   * deterministic, diverse pool from popularity, vote-count and Hindi
+   * release-era slices. Each slice contributes a bounded number of
+   * candidates before the final deduplication.
+   */
+  const configurations = [
+    {
+      language: "en-US",
+      region: "IN",
+      sortBy: "popularity.desc",
+    },
+    {
+      language: "en-US",
+      region: "IN",
+      sortBy: "vote_count.desc",
+    },
+    {
+      language: "en-US",
+      region: "IN",
+      sortBy: "vote_average.desc",
+      voteCountGte: 100,
+    },
+    {
+      language: "en-US",
+      region: "IN",
+      withOriginalLanguage: "hi",
+      sortBy: "popularity.desc",
+      startYear: 1990,
+      endYear: 1999,
+    },
+    {
+      language: "en-US",
+      region: "IN",
+      withOriginalLanguage: "hi",
+      sortBy: "popularity.desc",
+      startYear: 2000,
+      endYear: 2009,
+    },
+    {
+      language: "en-US",
+      region: "IN",
+      withOriginalLanguage: "hi",
+      sortBy: "popularity.desc",
+      startYear: 2010,
+      endYear: 2019,
+    },
+    {
+      language: "en-US",
+      region: "IN",
+      withOriginalLanguage: "hi",
+      sortBy: "popularity.desc",
+      startYear: 2020,
+      endYear: 2029,
+    },
+  ];
 
-      if (Array.isArray(data.results)) {
-        discovered.push(
-          ...data.results.map((item) => ({
-            ...item,
-            contentType: mediaType,
-          }))
+  const discovered = [];
+
+  for (const mediaType of mediaTypes) {
+    for (const configuration of configurations) {
+      const params = {
+        language: configuration.language,
+        region: configuration.region,
+        with_original_language:
+          configuration.withOriginalLanguage || undefined,
+        include_adult: false,
+        include_video:
+          mediaType === "movie" ? false : undefined,
+        include_null_first_air_dates:
+          mediaType === "tv" ? false : undefined,
+        sort_by: configuration.sortBy,
+        page: 1,
+        vote_count_gte:
+          configuration.voteCountGte || 10,
+      };
+
+      if (mediaType === "movie") {
+        if (configuration.startYear) {
+          params["primary_release_date.gte"] =
+            `${configuration.startYear}-01-01`;
+          params["primary_release_date.lte"] =
+            `${configuration.endYear}-12-31`;
+        }
+      } else if (configuration.startYear) {
+        params["first_air_date.gte"] =
+          `${configuration.startYear}-01-01`;
+        params["first_air_date.lte"] =
+          `${configuration.endYear}-12-31`;
+      }
+
+      try {
+        const data = await tmdbRequest(
+          `/discover/${mediaType}`,
+          params
+        );
+
+        if (Array.isArray(data.results)) {
+          discovered.push(
+            ...data.results
+              .slice(0, 12)
+              .map((item) => ({
+                ...item,
+                contentType: mediaType,
+              }))
+          );
+        }
+      } catch (error) {
+        console.error(
+          `TMDB ${mediaType} fallback slice failed:`,
+          error.message
         );
       }
     }
-  };
-
-  for (const mediaType of mediaTypes) {
-    await discoverPages(mediaType, {
-      language: "en-US",
-      region: "IN",
-    });
-  }
-
-  for (const mediaType of mediaTypes) {
-    await discoverPages(mediaType, {
-      language: "en-US",
-      region: "",
-      withOriginalLanguage: "hi",
-    });
   }
 
   return deduplicateCandidates(
     discovered.map(toCandidate)
   ).slice(0, 120);
 };
-
 
 const toCandidate = (item) => {
   const contentType =
