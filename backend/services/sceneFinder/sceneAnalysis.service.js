@@ -78,7 +78,7 @@ const analyzeScene = async ({
           candidate.title,
           candidate.originalTitle,
         ])
-    ).slice(0, 20);
+    ).slice(0, 30);
 
     visualRecognition =
       await analyzeVisualRecognition({
