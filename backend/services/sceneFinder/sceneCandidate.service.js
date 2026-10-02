@@ -206,7 +206,7 @@ const isUsefulSignal = (value = "") => {
 
   const words = text.split(/\s+/).filter(Boolean);
 
-  if (words.length < 2 || words.length > 12) {
+  if (words.length < 1 || words.length > 12) {
     return false;
   }
 
@@ -214,13 +214,20 @@ const isUsefulSignal = (value = "") => {
     words.map((word) => word.toLowerCase())
   );
 
-  if (uniqueWords.size < 2) {
+  if (
+    words.length === 1 &&
+    (
+      words[0].length < 4 ||
+      /^(the|this|that|with|from|your|have|feel|care|like|her|and|even)$/i.test(
+        words[0]
+      )
+    )
+  ) {
     return false;
   }
 
   const garbagePatterns = [
-    /^bahna$/i,
-    /^bahen$/i,
+    /^sp$/i,
     /^sp$/i,
     /^fyp$/i,
     /^viral$/i,
