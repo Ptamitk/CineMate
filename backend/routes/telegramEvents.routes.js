@@ -102,7 +102,7 @@ router.get(
 router.get(
   "/search-stream",
   authMiddleware,
-  (req, res) => {
+  async (req, res) => {
     const userId =
       req.userId.toString();
 
