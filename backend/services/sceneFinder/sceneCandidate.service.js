@@ -703,6 +703,9 @@ const toCandidate = (item) => {
     image: item.poster_path
       ? `https://image.tmdb.org/t/p/w500${item.poster_path}`
       : "",
+    backdropImage: item.backdrop_path
+      ? `https://image.tmdb.org/t/p/w780${item.backdrop_path}`
+      : "",
   };
 };
 
