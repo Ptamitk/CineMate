@@ -36,9 +36,7 @@ const isSafePrefixedPath = (filePath) => {
   const resolved = path.resolve(filePath);
 
   return ALLOWED_DIRECTORY_PREFIXES.some(
-    (prefix) =>
-      resolved === prefix.slice(0, -1) ||
-      resolved.startsWith(prefix)
+    (prefix) => resolved.startsWith(prefix)
   );
 };
 
