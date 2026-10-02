@@ -2,7 +2,14 @@ const { analyzeSceneSignals } = require("./sceneSignals.service");
 const { findSceneCandidates } = require("./sceneCandidate.service");
 const { matchSceneCandidates } = require("./sceneMatcher.service");
 const { analyzeVisualFrames } = require("./visualAnalysis.service");
+const {
+  analyzeVisualRecognition,
+} = require("./visualRecognition.service");
 const { selectUsefulFrames } = require("./frameSelection.service");
+
+const unique = (items) => [
+  ...new Set(items.filter(Boolean)),
+];
 
 const analyzeScene = async ({
   frameFiles = [],
@@ -50,6 +57,43 @@ const analyzeScene = async ({
   const candidates =
     candidateResult?.candidates || [];
 
+  /*
+   * CLIP is used as a second-stage reranker.
+   * Candidate generation still comes from caption/OCR/speech,
+   * so vision cannot invent an unrelated TMDB title.
+   *
+   * Keep the label set bounded because zero-shot image
+   * classification evaluates the supplied candidate labels
+   * for every frame.
+   */
+  let visualRecognition = {
+    framesAnalyzed: 0,
+    matches: [],
+  };
+
+  if (candidates.length && visualFrames.length) {
+    const visualCandidateLabels = unique(
+      candidates
+        .slice(0, 20)
+        .flatMap((candidate) => [
+          candidate.title,
+          candidate.originalTitle,
+        ])
+    ).slice(0, 20);
+
+    visualRecognition =
+      await analyzeVisualRecognition({
+        frameFiles: visualFrames.slice(0, 6),
+        candidateLabels:
+          visualCandidateLabels,
+      });
+
+    console.log(
+      "CLIP visual candidate matches:",
+      visualRecognition.matches.slice(0, 5)
+    );
+  }
+
   const matches =
     matchSceneCandidates({
       candidates,
@@ -63,6 +107,8 @@ const analyzeScene = async ({
       speechText: signals.speech.text,
       visualSignals:
         candidateResult?.visualSignals || [],
+      visualRecognitionMatches:
+        visualRecognition.matches || [],
     }) || [];
 
   const bestMatch =
@@ -73,6 +119,7 @@ const analyzeScene = async ({
   return {
     signals,
     visualAnalysis,
+    visualRecognition,
     caption,
     extractedCaptionTitle:
       candidateResult?.extractedCaptionTitle || "",
