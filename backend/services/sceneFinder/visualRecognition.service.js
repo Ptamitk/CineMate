@@ -94,7 +94,7 @@ framePath,
 candidateLabels,
 {
 hypothesis_template:
-"A scene from the movie or TV show {}",
+"A frame from {}",
 }
 );
 
