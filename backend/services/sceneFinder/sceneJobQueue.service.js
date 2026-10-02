@@ -51,6 +51,14 @@ const QUEUE_RECOVERY_INTERVAL_MS = Math.max(
   )
 );
 
+const QUEUE_RECOVERY_BATCH_SIZE = Math.max(
+  1,
+  Number(
+    process.env.SCENE_FINDER_QUEUE_RECOVERY_BATCH_SIZE ||
+      50
+  )
+);
+
 const enqueueSceneFinderJob = (
   jobId,
   uploadedVideo = null
@@ -215,19 +223,26 @@ const recoverSceneFinderJobs = async () => {
     })
       .select("_id videoPath status")
       .sort({ createdAt: 1 })
+      .limit(QUEUE_RECOVERY_BATCH_SIZE)
       .lean();
 
+  let queuedCount = 0;
+
   for (const job of jobs) {
-    enqueueSceneFinderJob(
+    const queued = enqueueSceneFinderJob(
       job._id.toString(),
       job.videoPath || null
     );
+
+    if (queued) {
+      queuedCount += 1;
+    }
   }
 
-  if (jobs.length) {
+  if (queuedCount) {
     console.log(
       "Recovered " +
-        jobs.length +
+        queuedCount +
         " Scene Finder job(s)."
     );
   }
