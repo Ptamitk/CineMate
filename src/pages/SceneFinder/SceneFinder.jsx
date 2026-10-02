@@ -204,6 +204,7 @@ const SceneFinder = () => {
   }, [
     telegramSceneResult,
     clearTelegramSceneResult,
+    stopPolling,
   ]);
 
   /* ================= ANALYSIS STEP ANIMATION ================= */
@@ -492,7 +493,7 @@ const SceneFinder = () => {
     return () => {
       stopPolling();
     };
-  }, [startPolling]);
+  }, [startPolling, stopPolling]);
 
   const handleIdentifyScene = async (
     event
