@@ -1,3 +1,5 @@
+const crypto = require("crypto");
+
 const SceneFinderJob = require("../models/sceneFinderJob.model");
 
 const {
@@ -33,6 +35,24 @@ const User = require("../models/user.model");
 const {
   telegramRequest,
 } = require("../services/telegram/telegram.service");
+
+const WORKER_ID = `scene-${process.pid}-${crypto.randomUUID()}`;
+
+const PROCESSING_STALE_MS = Math.max(
+  60 * 1000,
+  Number(
+    process.env.SCENE_FINDER_PROCESSING_STALE_MS ||
+      5 * 60 * 1000
+  )
+);
+
+const PROCESSING_HEARTBEAT_MS = Math.max(
+  15 * 1000,
+  Number(
+    process.env.SCENE_FINDER_HEARTBEAT_MS ||
+      60 * 1000
+  )
+);
 
 const normalizeCaption = (
   caption = ""
@@ -134,6 +154,80 @@ const sendTelegramFinalResult = async (
   }
 };
 
+const claimSceneFinderJob = async (
+  jobId
+) => {
+  const now = new Date();
+  const staleBefore = new Date(
+    now.getTime() - PROCESSING_STALE_MS
+  );
+
+  return SceneFinderJob.findOneAndUpdate(
+    {
+      _id: jobId,
+      $or: [
+        {
+          status: "pending",
+        },
+        {
+          status: "processing",
+          processingHeartbeatAt: {
+            $lte: staleBefore,
+          },
+        },
+        {
+          status: "processing",
+          processingHeartbeatAt: null,
+          processingStartedAt: {
+            $lte: staleBefore,
+          },
+        },
+        {
+          status: "processing",
+          processingHeartbeatAt: null,
+          processingStartedAt: null,
+        },
+      ],
+    },
+    {
+      $set: {
+        status: "processing",
+        error: "",
+        processingStartedAt: now,
+        processingHeartbeatAt: now,
+        workerId: WORKER_ID,
+      },
+    },
+    {
+      new: true,
+    }
+  );
+};
+
+const releaseSceneFinderJob = async (
+  jobId,
+  update
+) => {
+  return SceneFinderJob.findOneAndUpdate(
+    {
+      _id: jobId,
+      workerId: WORKER_ID,
+      status: "processing",
+    },
+    {
+      ...update,
+      $unset: {
+        processingStartedAt: 1,
+        processingHeartbeatAt: 1,
+        workerId: 1,
+      },
+    },
+    {
+      new: true,
+    }
+  );
+};
+
 const processSceneFinderJob = async (
   jobId,
   uploadedVideo = null
@@ -141,57 +235,69 @@ const processSceneFinderJob = async (
   let frameDirectory = null;
   let audioDirectory = null;
   let downloadedMediaDirectory = null;
+  let heartbeatTimer = null;
 
   try {
-    const job =
-      await SceneFinderJob.findById(
-        jobId
-      );
+    const processingJob =
+      await claimSceneFinderJob(jobId);
 
-    if (!job) {
-      throw new Error(
-        "Scene Finder job not found."
+    if (!processingJob) {
+      console.log(
+        `Scene Finder job ${jobId} is already completed or actively owned by another worker.`
       );
+      return;
     }
 
-    const processingJob =
-      await SceneFinderJob.findByIdAndUpdate(
-        jobId,
-        {
-          status: "processing",
-          error: "",
-        },
-        {
-          new: true,
-        }
-      );
+    heartbeatTimer = setInterval(
+      () => {
+        SceneFinderJob.updateOne(
+          {
+            _id: jobId,
+            workerId: WORKER_ID,
+            status: "processing",
+          },
+          {
+            $set: {
+              processingHeartbeatAt:
+                new Date(),
+            },
+          }
+        ).catch((error) => {
+          console.error(
+            "Scene Finder Heartbeat Error:",
+            error.message
+          );
+        });
+      },
+      PROCESSING_HEARTBEAT_MS
+    );
 
     await emitSceneEvent(
-      processingJob?.user,
+      processingJob.user,
       {
         type: "scene",
         jobId:
-          processingJob?._id?.toString(),
+          processingJob._id?.toString(),
         status:
-          processingJob?.status,
+          processingJob.status,
         result:
-          processingJob?.result || null,
+          processingJob.result || null,
         error:
-          processingJob?.error || "",
+          processingJob.error || "",
       }
     );
 
     const mediaInput =
       await getMediaInput({
-        reelUrl: job.reelUrl,
+        reelUrl: processingJob.reelUrl,
         uploadedFile: uploadedVideo
           ? {
               path: uploadedVideo,
               mimetype: "video/mp4",
             }
-          : job.videoPath
+          : processingJob.videoPath
             ? {
-                path: job.videoPath,
+                path: processingJob.videoPath,
                 mimetype: "video/mp4",
               }
             : null,
@@ -284,110 +390,116 @@ const processSceneFinderJob = async (
 
     if (!bestMatch) {
       const updatedJob =
-        await SceneFinderJob.findByIdAndUpdate(
+        await releaseSceneFinderJob(
           jobId,
           {
-            status: "completed",
-            result: {
-              contentId: null,
-              contentType: null,
-              title: "",
-              year: "",
-              rating: "",
-              image: "",
-              confidence: null,
+            $set: {
+              status: "completed",
+              result: {
+                contentId: null,
+                contentType: null,
+                title: "",
+                year: "",
+                rating: "",
+                image: "",
+                confidence: null,
+              },
+              error:
+                "No confident movie or TV match was found.",
             },
-            error:
-              "No confident movie or TV match was found.",
-          },
-          {
-            new: true,
           }
         );
 
+      if (!updatedJob) {
+        return;
+      }
+
       await emitSceneEvent(
-        updatedJob?.user,
+        updatedJob.user,
         {
           type: "scene",
           jobId:
-            updatedJob?._id?.toString(),
+            updatedJob._id?.toString(),
           status:
-            updatedJob?.status,
+            updatedJob.status,
           result:
-            updatedJob?.result,
+            updatedJob.result,
           error:
-            updatedJob?.error,
+            updatedJob.error,
         }
       );
 
       await sendTelegramFinalResult(
         updatedJob,
-        updatedJob?.status,
-        updatedJob?.result,
-        updatedJob?.error
+        updatedJob.status,
+        updatedJob.result,
+        updatedJob.error
       );
 
       return;
     }
 
     const updatedJob =
-      await SceneFinderJob.findByIdAndUpdate(
+      await releaseSceneFinderJob(
         jobId,
         {
-          status: "completed",
-          result: {
-            contentId:
-              bestMatch.contentId,
-            contentType:
-              bestMatch.contentType,
-            title:
-              bestMatch.title || "",
-            year:
-              bestMatch.releaseDate
-                ? bestMatch.releaseDate.slice(
-                    0,
-                    4
-                  )
-                : "",
-            rating:
-              bestMatch.rating
-                ? String(
-                    bestMatch.rating
-                  )
-                : "",
-            image:
-              bestMatch.image || "",
-            confidence:
-              bestMatch.confidence ||
-              null,
+          $set: {
+            status: "completed",
+            result: {
+              contentId:
+                bestMatch.contentId,
+              contentType:
+                bestMatch.contentType,
+              title:
+                bestMatch.title || "",
+              year:
+                bestMatch.releaseDate
+                  ? bestMatch.releaseDate.slice(
+                      0,
+                      4
+                    )
+                  : "",
+              rating:
+                bestMatch.rating
+                  ? String(
+                      bestMatch.rating
+                    )
+                  : "",
+              image:
+                bestMatch.image || "",
+              confidence:
+                bestMatch.confidence ||
+                null,
+            },
+            error: "",
           },
-          error: "",
-        },
-        {
-          new: true,
         }
       );
 
+    if (!updatedJob) {
+      return;
+    }
+
     await emitSceneEvent(
-      updatedJob?.user,
+      updatedJob.user,
       {
         type: "scene",
         jobId:
-          updatedJob?._id?.toString(),
+          updatedJob._id?.toString(),
         status:
-          updatedJob?.status,
+          updatedJob.status,
         result:
-          updatedJob?.result,
+          updatedJob.result,
         error:
-          updatedJob?.error,
+          updatedJob.error,
       }
     );
-    
+
     await sendTelegramFinalResult(
       updatedJob,
-      updatedJob?.status,
-      updatedJob?.result,
-      updatedJob?.error
+      updatedJob.status,
+      updatedJob.result,
+      updatedJob.error
     );
   } catch (error) {
     console.error(
@@ -401,41 +513,46 @@ const processSceneFinderJob = async (
     );
 
     const failedJob =
-      await SceneFinderJob.findByIdAndUpdate(
+      await releaseSceneFinderJob(
         jobId,
         {
-          status: "failed",
-          error:
-            error.message ||
-            "Scene processing failed.",
-        },
-        {
-          new: true,
+          $set: {
+            status: "failed",
+            error:
+              error.message ||
+              "Scene processing failed.",
+          },
         }
       );
 
-    await emitSceneEvent(
-      failedJob?.user,
-      {
-        type: "scene",
-        jobId:
-          failedJob?._id?.toString(),
-        status:
-          failedJob?.status,
-        result:
-          failedJob?.result || null,
-        error:
-          failedJob?.error,
-      }
-    );
-    
-    await sendTelegramFinalResult(
-      failedJob,
-      failedJob?.status,
-      failedJob?.result,
-      failedJob?.error
-    );
+    if (failedJob) {
+      await emitSceneEvent(
+        failedJob.user,
+        {
+          type: "scene",
+          jobId:
+            failedJob._id?.toString(),
+          status:
+            failedJob.status,
+          result:
+            failedJob.result || null,
+          error:
+            failedJob.error,
+        }
+      );
+
+      await sendTelegramFinalResult(
+        failedJob,
+        failedJob.status,
+        failedJob.result,
+        failedJob.error
+      );
+    }
   } finally {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+    }
+
     await cleanupSceneFiles({
       uploadedVideo,
       frameDirectory,
