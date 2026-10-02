@@ -73,12 +73,12 @@ const analyzeScene = async ({
   if (candidates.length && visualFrames.length) {
     const visualCandidateLabels = unique(
       candidates
-        .slice(0, 30)
+        .slice(0, 24)
         .flatMap((candidate) => [
           candidate.title,
           candidate.originalTitle,
         ])
-    ).slice(0, 30);
+    ).slice(0, 24);
 
     visualRecognition =
       await analyzeVisualRecognition({
