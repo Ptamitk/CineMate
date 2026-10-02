@@ -22,6 +22,12 @@ const sceneFinderJobSchema = new mongoose.Schema(
       trim: true,
     },
 
+    source: {
+      type: String,
+      enum: ["web", "telegram"],
+      default: "web",
+      index: true,
+    },
 
     status: {
       type: String,
