@@ -35,7 +35,8 @@ try {
 } catch (error) {
   if (error?.name === "AbortError") {
     throw new Error(
-      `Telegram API request timed out after ${TELEGRAM_REQUEST_TIMEOUT_MS}ms`
+      `Telegram API request timed out after ${TELEGRAM_REQUEST_TIMEOUT_MS}ms`,
+      { cause: error }
     );
   }
 
