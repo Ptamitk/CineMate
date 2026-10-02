@@ -322,6 +322,36 @@ const SceneFinder = () => {
         await response.json();
 
       if (!response.ok) {
+        if (
+          response.status === 401 ||
+          response.status === 403
+        ) {
+          stopPolling();
+          localStorage.removeItem(
+            "cinemate_scene_finder_job"
+          );
+          setIsSearching(false);
+          setJobId(null);
+          setError(
+            "Your session has expired. Please login again."
+          );
+          return;
+        }
+
+        if (response.status === 404) {
+          stopPolling();
+          localStorage.removeItem(
+            "cinemate_scene_finder_job"
+          );
+          setIsSearching(false);
+          setJobId(null);
+          setError(
+            data.message ||
+              "This Scene Finder job is no longer available."
+          );
+          return;
+        }
+
         throw new Error(
           data.message ||
             "Failed to fetch scene analysis status."
