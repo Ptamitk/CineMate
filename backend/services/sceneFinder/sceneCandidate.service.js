@@ -668,7 +668,7 @@ const findSceneCandidates = async ({
         ? captionInfo.year
         : null;
 
-    let results = [];
+    let results;
 
     if (
       captionInfo.type === "movie"
