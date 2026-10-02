@@ -19,7 +19,9 @@ import { Link } from "react-router-dom";
 
 import { useAuth } from "../../context/AuthContext";
 
-const API_BASE_URL = "http://localhost:5000";
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  "http://localhost:5000";
 
 const analysisSteps = [
   {
@@ -193,6 +195,14 @@ const SceneFinder = () => {
 
         image:
           sceneResult.image || "",
+
+        evidenceType:
+          sceneResult.evidenceType || "",
+
+        sceneScore:
+          typeof sceneResult.sceneScore === "number"
+            ? sceneResult.sceneScore
+            : null,
       });
     } else if (
       telegramSceneResult.status ===
@@ -364,6 +374,14 @@ const SceneFinder = () => {
 
           image:
             job.result?.image || "",
+
+          evidenceType:
+            job.result?.evidenceType || "",
+
+          sceneScore:
+            typeof job.result?.sceneScore === "number"
+              ? job.result.sceneScore
+              : null,
         });
 
         return;
@@ -1032,6 +1050,17 @@ const SceneFinder = () => {
                         {result.confidence}%
                       </span>
 
+                    </div>
+                  )}
+
+                  {result.evidenceType && (
+                    <div className="mt-5 flex flex-wrap items-center gap-3 text-xs">
+                      <span className="uppercase tracking-wider text-white/30">
+                        Evidence
+                      </span>
+                      <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-white/55">
+                        {result.evidenceType.replace(/-/g, " ")}
+                      </span>
                     </div>
                   )}
 
