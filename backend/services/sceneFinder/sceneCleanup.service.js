@@ -28,6 +28,20 @@ const isInside = (targetPath, allowedPath) => {
   );
 };
 
+const isSafePrefixedPath = (filePath) => {
+  if (!filePath) {
+    return false;
+  }
+
+  const resolved = path.resolve(filePath);
+
+  return ALLOWED_DIRECTORY_PREFIXES.some(
+    (prefix) =>
+      resolved === prefix.slice(0, -1) ||
+      resolved.startsWith(prefix)
+  );
+};
+
 const isSafeFilePath = (filePath) => {
   if (!filePath) {
     return false;
@@ -37,22 +51,12 @@ const isSafeFilePath = (filePath) => {
 
   return (
     isInside(resolved, UPLOAD_DIRECTORY) ||
-    ALLOWED_DIRECTORY_PREFIXES.some((prefix) =>
-      isInside(resolved, prefix)
-    )
+    isSafePrefixedPath(resolved)
   );
 };
 
 const isSafeDirectoryPath = (directoryPath) => {
-  if (!directoryPath) {
-    return false;
-  }
-
-  const resolved = path.resolve(directoryPath);
-
-  return ALLOWED_DIRECTORY_PREFIXES.some((prefix) =>
-    isInside(resolved, prefix)
-  );
+  return isSafePrefixedPath(directoryPath);
 };
 
 const removeFile = async (filePath) => {
@@ -237,14 +241,7 @@ const cleanupStaleSceneTempFiles = async ({
       }
 
       if (
-        ALLOWED_DIRECTORY_PREFIXES.some(
-          (prefix) =>
-            entryPath ===
-              prefix ||
-            entryPath.startsWith(
-              prefix
-            )
-        )
+        isSafePrefixedPath(entryPath)
       ) {
         await removeIfStale(entryPath);
       }
