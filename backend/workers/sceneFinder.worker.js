@@ -279,6 +279,7 @@ const processSceneFinderJob = async (
   let audioDirectory = null;
   let downloadedMediaDirectory = null;
   let heartbeatTimer = null;
+  let heartbeatInFlight = false;
   let leaseLost = false;
 
   let claimCompleted = false;
@@ -298,6 +299,12 @@ const processSceneFinderJob = async (
 
     heartbeatTimer = setInterval(
       async () => {
+        if (heartbeatInFlight || leaseLost) {
+          return;
+        }
+
+        heartbeatInFlight = true;
+
         try {
           const heartbeat =
             await SceneFinderJob.updateOne(
@@ -327,6 +334,8 @@ const processSceneFinderJob = async (
             "Scene Finder Heartbeat Error:",
             error.message
           );
+        } finally {
+          heartbeatInFlight = false;
         }
       },
       PROCESSING_HEARTBEAT_MS
