@@ -1,5 +1,13 @@
 const Tesseract = require("tesseract.js");
 
+const OCR_TIMEOUT_MS = Math.max(
+  10 * 1000,
+  Number(
+    process.env.SCENE_FINDER_OCR_TIMEOUT_MS ||
+      60 * 1000
+  )
+);
+
 const extractTextFromImage = async (
 imagePath
 ) => {
@@ -10,8 +18,9 @@ throw new Error(
 }
 
 const result =
-await Tesseract.recognize(
-imagePath,
+await Promise.race([
+  Tesseract.recognize(
+    imagePath,
 "eng",
 {
 logger: (info) => {
@@ -26,8 +35,17 @@ console.log(
 );
 }
 },
-}
-);
+  ),
+  new Promise((_, reject) => {
+    setTimeout(() => {
+      reject(
+        new Error(
+          `OCR timed out after ${OCR_TIMEOUT_MS} ms.`
+        )
+      );
+    }, OCR_TIMEOUT_MS);
+  }),
+]);
 
 return {
 text:
