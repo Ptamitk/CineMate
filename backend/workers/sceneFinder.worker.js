@@ -139,8 +139,8 @@ const sendTelegramFinalResult = async (
 
       message =
         `Scene identified: ${result.title}` +
-        (result.year
-          ? ` (${result.year})`
+        (result.year || result.releaseDate
+          ? ` (${result.year || String(result.releaseDate).slice(0, 4)})`
           : "") +
         (contentType
           ? `\nType: ${contentType}`
