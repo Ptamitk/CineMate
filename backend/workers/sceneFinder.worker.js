@@ -532,6 +532,12 @@ const processSceneFinderJob = async (
               confidence:
                 bestMatch.confidence ||
                 null,
+              sceneScore:
+                typeof bestMatch.sceneScore === "number"
+                  ? bestMatch.sceneScore
+                  : null,
+              evidenceType:
+                bestMatch.evidenceType || "",
             },
             error: "",
           },
