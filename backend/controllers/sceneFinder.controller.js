@@ -2,7 +2,7 @@ const SceneFinderJob = require("../models/sceneFinderJob.model");
 
 const {
 processSceneFinderJob,
-} = require("../workers/sceneFinder.worker");
+} = require("../services/sceneFinder/sceneJobQueue.service");
 
 const analyzeScene = async (req, res) => {
 try {
@@ -26,8 +26,8 @@ const job = await SceneFinderJob.create({
   status: "pending",
 });
 
-// Start processing after the job is created.
-processSceneFinderJob(
+// Queue processing so heavy Scene Finder jobs are bounded.
+enqueueSceneFinderJob(
   job._id.toString(),
   uploadedVideo
 );
