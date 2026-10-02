@@ -14,7 +14,7 @@ const {
 } = require("../services/telegram/telegramEvents.service");
 
 const {
-  processSceneFinderJob,
+  enqueueSceneFinderJob,
 } = require("../services/sceneFinder/sceneJobQueue.service");
 
 const SceneFinderJob =
@@ -269,12 +269,7 @@ router.post(
 
         enqueueSceneFinderJob(
           job._id.toString()
-        ).catch((error) => {
-          console.error(
-            "Telegram Scene Finder Worker Error:",
-            error.message
-          );
-        });
+        );
 
         return;
       }
