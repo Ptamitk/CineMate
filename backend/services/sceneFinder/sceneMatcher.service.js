@@ -26,6 +26,141 @@ const getYear = (date = "") => {
   return match ? Number(match[1]) : null;
 };
 
+const COMMON_SCENE_WORDS = new Set([
+  "man", "woman", "boy", "girl", "person", "people",
+  "love", "life", "time", "day", "night", "world",
+  "home", "house", "family", "friend", "friends",
+  "good", "bad", "best", "new", "old", "one", "two",
+  "three", "place", "thing", "things", "way", "work",
+  "story", "movie", "film", "show", "series", "scene",
+]);
+
+const isDistinctiveTitle = (value = "") => {
+  const tokens = tokenize(value);
+
+  if (tokens.length >= 2) {
+    return true;
+  }
+
+  if (tokens.length !== 1) {
+    return false;
+  }
+
+  const token = tokens[0];
+
+  return (
+    token.length >= 4 &&
+    !COMMON_SCENE_WORDS.has(token)
+  );
+};
+
+const areIndependentTextSignals = (
+  firstSource = "",
+  secondSource = ""
+) => {
+  const first = normalizeText(firstSource);
+  const second = normalizeText(secondSource);
+
+  if (!first || !second) {
+    return false;
+  }
+
+  if (first === second) {
+    return false;
+  }
+
+  const firstTokens = new Set(
+    first.split(/\s+/).filter(Boolean)
+  );
+  const secondTokens = new Set(
+    second.split(/\s+/).filter(Boolean)
+  );
+
+  const common = [...firstTokens].filter((token) =>
+    secondTokens.has(token)
+  ).length;
+
+  const union = new Set([
+    ...firstTokens,
+    ...secondTokens,
+  ]).size;
+
+  const jaccard = union
+    ? common / union
+    : 0;
+
+  if (jaccard >= 0.8) {
+    return false;
+  }
+
+  const shorter = Math.min(
+    first.length,
+    second.length
+  );
+  const longer = Math.max(
+    first.length,
+    second.length
+  );
+
+  if (
+    longer > 0 &&
+    shorter / longer >= 0.8 &&
+    (first.includes(second) || second.includes(first))
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
+const PROMO_TITLE_PATTERNS = [
+  /^only in theaters?$/i,
+  /^now playing$/i,
+  /^coming soon$/i,
+  /^watch now$/i,
+  /^official trailer$/i,
+  /^official teaser$/i,
+  /^new trailer$/i,
+  /^new teaser$/i,
+  /^full video$/i,
+  /^full movie$/i,
+  /^subscribe$/i,
+  /^follow us$/i,
+  /^link in bio$/i,
+  /^click the link$/i,
+  /^out now$/i,
+  /^available now$/i,
+];
+
+const isPromotionalTitle = (value = "") => {
+  const normalized = normalizeTitle(value);
+
+  if (!normalized) {
+    return true;
+  }
+
+  if (
+    PROMO_TITLE_PATTERNS.some((pattern) =>
+      pattern.test(normalized)
+    )
+  ) {
+    return true;
+  }
+
+  const words = normalized.split(/\s+/);
+
+  if (
+    words.length <= 5 &&
+    /^(only|now|new|official|watch|coming|out|available|full|latest|exclusive)$/.test(
+      words[0]
+    )
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
 const getTitleSimilarity = (a = "", b = "") => {
   const first = normalizeTitle(a);
   const second = normalizeTitle(b);
@@ -35,7 +170,7 @@ const getTitleSimilarity = (a = "", b = "") => {
   }
 
   if (first === second) {
-    return 1;
+    return isDistinctiveTitle(first) ? 1 : 0;
   }
 
   if (
@@ -94,7 +229,12 @@ const getExactTitleScore = (
     return 0;
   }
 
-  return first === second ? 1 : 0;
+  return (
+    first === second &&
+    isDistinctiveTitle(second)
+  )
+    ? 1
+    : 0;
 };
 
 const getWordOverlap = (
@@ -222,9 +362,44 @@ const getBestTextSignal = (
     );
 
   const sources = [
-    normalized,
     ...lines,
   ];
+
+  /*
+   * Full OCR/speech text is useful for context, but scoring it
+   * directly can create false positives when a movie title is
+   * only one small phrase inside a long dialogue transcript.
+   * Exact title windows and short lines remain high-signal.
+   */
+  if (normalized.split(/\s+/).length <= 12) {
+    sources.unshift(normalized);
+  }
+
+  /*
+   * Speech/OCR often contains a full sentence around the title.
+   * Compare bounded word windows as well, so:
+   * "this scene is from Interstellar movie" can still
+   * produce an exact/near-exact title signal.
+   */
+  const addWordWindows = (text) => {
+    const words = text
+      .split(/\s+/)
+      .filter(Boolean);
+
+    const windows = [];
+
+    for (let size = 2; size <= Math.min(8, words.length); size += 1) {
+      for (let start = 0; start + size <= words.length; start += 1) {
+        windows.push(words.slice(start, start + size).join(" "));
+      }
+    }
+
+    return windows;
+  };
+
+  sources.push(
+    ...lines.flatMap(addWordWindows).slice(0, 80)
+  );
 
   let best = {
     similarity: 0,
@@ -260,52 +435,143 @@ const getBestTextSignal = (
 
 const getVisualSignal = (
   visualSignals = [],
+  visualRecognitionMatches = [],
   title = "",
   originalTitle = ""
 ) => {
-  if (
-    !Array.isArray(visualSignals) ||
-    !visualSignals.length
-  ) {
-    return {
-      similarity: 0,
-      overlap: 0,
-    };
-  }
-
   let bestSimilarity = 0;
   let bestOverlap = 0;
 
-  for (const item of visualSignals) {
-    const description =
-      typeof item === "string"
-        ? item
-        : item?.description || "";
+  if (Array.isArray(visualSignals)) {
+    for (const item of visualSignals) {
+      const description =
+        typeof item === "string"
+          ? item
+          : item?.description || "";
 
-    if (!description) {
-      continue;
+      if (!description) {
+        continue;
+      }
+
+      const signal = getTextSignal(
+        description,
+        title,
+        originalTitle
+      );
+
+      bestSimilarity = Math.max(
+        bestSimilarity,
+        signal.similarity
+      );
+
+      bestOverlap = Math.max(
+        bestOverlap,
+        signal.overlap
+      );
     }
-
-    const signal = getTextSignal(
-      description,
-      title,
-      originalTitle
-    );
-
-    bestSimilarity = Math.max(
-      bestSimilarity,
-      signal.similarity
-    );
-
-    bestOverlap = Math.max(
-      bestOverlap,
-      signal.overlap
-    );
   }
 
+  let clipAverage = 0;
+  let clipMax = 0;
+  let clipMargin = 0;
+  let clipFramesMatched = 0;
+
+  if (Array.isArray(visualRecognitionMatches)) {
+    const titleSet = new Set([
+      normalizeTitle(title),
+      normalizeTitle(originalTitle),
+    ].filter(Boolean));
+
+    const matched = visualRecognitionMatches.find(
+      (item) =>
+        titleSet.has(
+          normalizeTitle(item?.label || "")
+        )
+    );
+
+    if (matched) {
+      /*
+       * Raw CLIP probabilities depend on the size of the
+       * candidate-label set. The visual fallback can now
+       * supply a much larger TMDB pool, so use the calibrated
+       * within-frame relative scores as the primary signal.
+       */
+      clipAverage = Math.max(
+        Number(
+          matched.averageScore || 0
+        ),
+        Number(
+          matched.relativeAverageScore || 0
+        )
+      );
+
+      clipMax = Math.max(
+        Number(
+          matched.maxScore || 0
+        ),
+        Number(
+          matched.relativeMaxScore || 0
+        )
+      );
+
+      /*
+       * framesMatched means the label was returned by CLIP, which
+       * happens for every label on every frame. It is therefore not
+       * evidence that the title actually matched the frame.
+       *
+       * topFrameCount is the meaningful count: frames where this
+       * title was close to the strongest label for that frame.
+       */
+      clipFramesMatched = Number(
+        matched.topFrameCount || 0
+      );
+
+      const competitors =
+        visualRecognitionMatches
+          .filter(
+            (item) =>
+              !titleSet.has(
+                normalizeTitle(item?.label || "")
+              )
+          )
+          .map((item) =>
+            Math.max(
+              Number(
+                item?.averageScore || 0
+              ),
+              Number(
+                item?.relativeAverageScore || 0
+              )
+            )
+          );
+
+      const bestCompetitor =
+        competitors.length
+          ? Math.max(...competitors)
+          : 0;
+
+      clipMargin = Math.max(
+        0,
+        clipAverage - bestCompetitor
+      );
+    }
+  }
+
+  const clipSimilarity =
+    clipAverage > 0 || clipMax > 0
+      ? clipAverage * 0.7 + clipMax * 0.3
+      : 0;
+
   return {
-    similarity: bestSimilarity,
+    similarity: Math.max(
+      bestSimilarity,
+      clipSimilarity
+    ),
     overlap: bestOverlap,
+    clipAverage,
+    clipMax,
+    clipMargin,
+    clipFramesMatched,
   };
 };
 
@@ -317,13 +583,21 @@ const calculateCandidateScore = ({
   ocrText = "",
   speechText = "",
   visualSignals = [],
+  visualRecognitionMatches = [],
 }) => {
   const title = candidate.title || "";
   const originalTitle =
     candidate.originalTitle || "";
 
+  const usableCaptionTitle =
+    isPromotionalTitle(
+      extractedCaptionTitle
+    )
+      ? ""
+      : extractedCaptionTitle;
+
   const captionSignal = getTextSignal(
-    extractedCaptionTitle,
+    usableCaptionTitle,
     title,
     originalTitle
   );
@@ -342,6 +616,7 @@ const calculateCandidateScore = ({
 
   const visualSignal = getVisualSignal(
     visualSignals,
+    visualRecognitionMatches,
     title,
     originalTitle
   );
@@ -360,10 +635,23 @@ const calculateCandidateScore = ({
     candidate.contentType
   );
 
-  let finalScore = 0;
+  let finalScore;
   let evidenceType = "none";
 
-  if (captionSignal.exact === 1) {
+  const strongEnoughCaption =
+    usableCaptionTitle &&
+    (
+      captionSignal.exact === 1 ||
+      (
+        captionSignal.similarity >= 0.72 &&
+        captionSignal.overlap >= 0.45
+      )
+    );
+
+  if (
+    strongEnoughCaption &&
+    captionSignal.exact === 1
+  ) {
     finalScore = 0.98;
 
     if (yearScore === 1) {
@@ -374,13 +662,8 @@ const calculateCandidateScore = ({
       finalScore += 0.01;
     }
 
-    finalScore = Math.min(
-      finalScore,
-      1
-    );
-
     evidenceType = "caption-exact";
-  } else if (extractedCaptionTitle) {
+  } else if (strongEnoughCaption) {
     finalScore =
       captionSignal.similarity * 0.65 +
       captionSignal.overlap * 0.2 +
@@ -423,6 +706,7 @@ const calculateCandidateScore = ({
 
     const hasStrongOcr =
       ocrSignal.exact === 1 ||
+
       (
         ocrSignal.similarity >= 0.78 &&
         ocrSignal.overlap >= 0.5
@@ -436,8 +720,16 @@ const calculateCandidateScore = ({
       );
 
     const hasStrongVisual =
-      visualSignal.similarity >= 0.85 &&
-      visualSignal.overlap >= 0.5;
+      visualSignal.clipMax >= 0.45 &&
+      visualSignal.clipAverage >= 0.25 &&
+      visualSignal.clipMargin >= 0.08 &&
+      (
+        visualSignal.clipFramesMatched >= 2 ||
+        (
+          visualSignal.clipMax >= 0.65 &&
+          visualSignal.clipMargin >= 0.12
+        )
+      );
 
     finalScore =
       ocrScore * 0.5 +
@@ -457,6 +749,19 @@ const calculateCandidateScore = ({
       Number(hasStrongSpeech) +
       Number(hasStrongVisual);
 
+    const independentTextSignals =
+      Number(
+        hasStrongOcr &&
+        (
+          !hasStrongSpeech ||
+          areIndependentTextSignals(
+            ocrSignal.source,
+            speechSignal.source
+          )
+        )
+      ) +
+      Number(hasStrongSpeech);
+
     if (strongEvidenceCount === 0) {
       finalScore = Math.min(
         finalScore,
@@ -464,12 +769,56 @@ const calculateCandidateScore = ({
       );
     }
 
+    /*
+     * One weak text signal must not be enough to
+     * identify a movie. Exact OCR/speech is allowed,
+     * otherwise require independent agreement.
+     */
+    if (
+      independentTextSignals === 1 &&
+      !(
+        ocrSignal.exact === 1 ||
+        speechSignal.exact === 1
+      )
+    ) {
+      finalScore = Math.min(
+        finalScore,
+        0.58
+      );
+    }
+
     if (
       hasStrongOcr ||
       hasStrongSpeech
     ) {
-      evidenceType = "text";
+      evidenceType =
+        independentTextSignals >= 2
+          ? "text-multi-signal"
+          : "text";
     } else if (hasStrongVisual) {
+      /*
+       * CLIP is a second-stage classifier, so its raw probability
+       * should not be forced through the same weighted formula as
+       * OCR/speech similarity. Once the candidate clears the
+       * average/max/margin gates above, give visual evidence a
+       * bounded floor that allows a genuinely strong visual match
+       * to pass while keeping the margin as an important safeguard.
+       */
+      const visualConfidenceFloor =
+        0.62 +
+        Math.min(
+          Math.max(
+            visualSignal.clipMargin - 0.08,
+            0
+          ) * 0.5,
+          0.12
+        );
+
+      finalScore = Math.max(
+        finalScore,
+        visualConfidenceFloor
+      );
+
       evidenceType = "visual";
     }
   }
@@ -514,7 +863,12 @@ const calculateCandidateScore = ({
 const isStrongCaptionMatch = (
   signal
 ) => {
-  if (!signal.extractedCaptionTitle) {
+  if (
+    !signal.extractedCaptionTitle ||
+    isPromotionalTitle(
+      signal.extractedCaptionTitle
+    )
+  ) {
     return false;
   }
 
@@ -535,12 +889,38 @@ const isStrongCaptionMatch = (
 const isStrongTextMatch = (
   signal
 ) => {
-  if (signal.extractedCaptionTitle) {
+  if (
+    signal.extractedCaptionTitle &&
+    !isPromotionalTitle(
+      signal.extractedCaptionTitle
+    )
+  ) {
     return false;
   }
 
   return (
-    signal.evidenceType === "text" &&
+    (
+      signal.evidenceType === "text" ||
+      signal.evidenceType === "text-multi-signal"
+    ) &&
+    signal.finalScore >= 0.62
+  );
+};
+
+const isStrongVisualMatch = (
+  signal
+) => {
+  if (
+    signal.extractedCaptionTitle &&
+    !isPromotionalTitle(
+      signal.extractedCaptionTitle
+    )
+  ) {
+    return false;
+  }
+
+  return (
+    signal.evidenceType === "visual" &&
     signal.finalScore >= 0.62
   );
 };
@@ -553,6 +933,7 @@ const matchSceneCandidates = ({
   ocrText = "",
   speechText = "",
   visualSignals = [],
+  visualRecognitionMatches = [],
 }) => {
   if (
     !Array.isArray(candidates) ||
@@ -577,6 +958,7 @@ const matchSceneCandidates = ({
             ocrText,
             speechText,
             visualSignals,
+            visualRecognitionMatches,
           });
 
         console.log(
@@ -589,11 +971,57 @@ const matchSceneCandidates = ({
           signal,
         };
       })
-      .sort(
-        (a, b) =>
+      .sort((a, b) => {
+        const scoreDifference =
           b.signal.finalScore -
-          a.signal.finalScore
-      );
+          a.signal.finalScore;
+
+        if (scoreDifference !== 0) {
+          return scoreDifference;
+        }
+
+        const evidenceRank = (signal) => {
+          if (
+            signal.evidenceType === "caption-exact"
+          ) {
+            return 4;
+          }
+
+          if (
+            signal.evidenceType === "text-multi-signal"
+          ) {
+            return 3;
+          }
+
+          if (
+            signal.evidenceType === "text" ||
+            signal.evidenceType === "caption"
+          ) {
+            return 2;
+          }
+
+          if (
+            signal.evidenceType === "visual"
+          ) {
+            return 1;
+          }
+
+          return 0;
+        };
+
+        const evidenceDifference =
+          evidenceRank(b.signal) -
+          evidenceRank(a.signal);
+
+        if (evidenceDifference !== 0) {
+          return evidenceDifference;
+        }
+
+        return (
+          Number(b.candidate.popularity || 0) -
+          Number(a.candidate.popularity || 0)
+        );
+      });
 
   const best =
     scoredCandidates[0];
@@ -624,7 +1052,8 @@ const matchSceneCandidates = ({
   const strongCandidates =
     scoredCandidates.filter(
       ({ signal }) =>
-        isStrongTextMatch(signal)
+        isStrongTextMatch(signal) ||
+        isStrongVisualMatch(signal)
     );
 
   if (!strongCandidates.length) {
@@ -667,7 +1096,17 @@ const matchSceneCandidates = ({
       Boolean(bestYear) &&
       bestYear === secondYear;
 
-    if (!sameTitle || !sameYear) {
+    const sameType =
+      Boolean(strongBest.candidate.contentType) &&
+      strongBest.candidate.contentType ===
+        second.candidate.contentType;
+
+    /*
+     * A movie and a series can legitimately share the same title
+     * and release year. Treat them as ambiguous unless their
+     * content types also agree.
+     */
+    if (!sameTitle || !sameYear || !sameType) {
       console.log(
         "Scene candidates too close to confidently select."
       );

@@ -2,6 +2,14 @@ const { analyzeSceneSignals } = require("./sceneSignals.service");
 const { findSceneCandidates } = require("./sceneCandidate.service");
 const { matchSceneCandidates } = require("./sceneMatcher.service");
 const { analyzeVisualFrames } = require("./visualAnalysis.service");
+const {
+  analyzeVisualRecognition,
+} = require("./visualRecognition.service");
+const { selectUsefulFrames } = require("./frameSelection.service");
+
+const unique = (items) => [
+  ...new Set(items.filter(Boolean)),
+];
 
 const analyzeScene = async ({
   frameFiles = [],
@@ -24,9 +32,14 @@ const analyzeScene = async ({
   console.log("SPEECH TEXT:", signals.speech.text);
   console.log("REEL CAPTION:", caption);
 
+  const visualFrames = selectUsefulFrames({
+    frameFiles,
+    maxFrames: 12,
+  });
+
   const visualAnalysis =
     await analyzeVisualFrames({
-      frameFiles,
+      frameFiles: visualFrames,
     });
 
   console.log(
@@ -44,6 +57,71 @@ const analyzeScene = async ({
   const candidates =
     candidateResult?.candidates || [];
 
+  /*
+   * CLIP is the visual verification stage.
+   * When text discovery fails, candidate generation supplies a
+   * bounded TMDB pool so CLIP can search by actual media titles.
+   *
+   * Keep the pool bounded because zero-shot image classification
+   * evaluates every supplied candidate label for every frame.
+   */
+  let visualRecognition = {
+    framesAnalyzed: 0,
+    matches: [],
+  };
+
+  if (candidates.length && visualFrames.length) {
+    const visualCandidateLabels = unique(
+      candidates
+        .slice(0, 120)
+        .flatMap((candidate) => [
+          candidate.title,
+          candidate.originalTitle,
+        ])
+    ).slice(0, 60);
+
+    /*
+     * Two-stage visual retrieval:
+     * 1) Broad pass: compare a balanced set of frames against a
+     *    larger title pool to avoid missing the real title.
+     * 2) Refined pass: re-check the strongest titles across the
+     *    complete video frame selection.
+     *
+     * This is much safer than either checking only 24 titles or
+     * running the expensive full pool against every frame.
+     */
+    const broadVisualRecognition =
+      await analyzeVisualRecognition({
+        frameFiles: selectUsefulFrames({
+          frameFiles: visualFrames,
+          maxFrames: 4,
+        }),
+        candidateLabels:
+          visualCandidateLabels,
+      });
+
+    const refinedLabels = unique(
+      broadVisualRecognition.matches
+        .slice(0, 20)
+        .map((match) => match.label)
+    );
+
+    if (refinedLabels.length) {
+      visualRecognition =
+        await analyzeVisualRecognition({
+          frameFiles: visualFrames,
+          candidateLabels: refinedLabels,
+        });
+    } else {
+      visualRecognition = broadVisualRecognition;
+    }
+
+    console.log(
+      "CLIP visual candidate matches:",
+      visualRecognition.matches.slice(0, 10)
+    );
+  }
+
   const matches =
     matchSceneCandidates({
       candidates,
@@ -57,6 +135,8 @@ const analyzeScene = async ({
       speechText: signals.speech.text,
       visualSignals:
         candidateResult?.visualSignals || [],
+      visualRecognitionMatches:
+        visualRecognition.matches || [],
     }) || [];
 
   const bestMatch =
@@ -67,6 +147,7 @@ const analyzeScene = async ({
   return {
     signals,
     visualAnalysis,
+    visualRecognition,
     caption,
     extractedCaptionTitle:
       candidateResult?.extractedCaptionTitle || "",

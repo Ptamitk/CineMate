@@ -30,22 +30,53 @@ os.tmpdir(),
 );
 
 const audioPath = path.join(
-outputDirectory,
-"scene-audio.wav"
+  outputDirectory,
+  "scene-audio.wav"
+);
+
+const MAX_AUDIO_DURATION_SECONDS = Math.max(
+  60,
+  Number(
+    process.env.SCENE_FINDER_MAX_AUDIO_DURATION_SECONDS ||
+      10 * 60
+  )
+);
+
+const MAX_AUDIO_BYTES = Math.max(
+  1024 * 1024,
+  Number(
+    process.env.SCENE_FINDER_MAX_AUDIO_BYTES ||
+      25 * 1024 * 1024
+  )
 );
 
 await runFFmpeg([
-"-i",
-videoPath,
-"-vn",
-"-ac",
-"1",
-"-ar",
-"16000",
-"-c:a",
-"pcm_s16le",
-audioPath,
+  "-i",
+  videoPath,
+  "-vn",
+  "-ac",
+  "1",
+  "-ar",
+  "16000",
+  "-t",
+  String(MAX_AUDIO_DURATION_SECONDS),
+  "-c:a",
+  "pcm_s16le",
+  audioPath,
 ]);
+
+const stats = await fs.promises.stat(audioPath);
+
+if (stats.size > MAX_AUDIO_BYTES) {
+  await fs.promises.rm(outputDirectory, {
+    recursive: true,
+    force: true,
+  });
+
+  throw new Error(
+    "Extracted Scene Finder audio exceeded the safety size limit."
+  );
+}
 
 return {
 outputDirectory,

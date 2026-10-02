@@ -318,7 +318,7 @@ const InstagramSceneFinder = () => {
             </p>
 
             <Link
-              to="/search"
+              to="/scene-finder"
               className="group mt-8 inline-flex items-center gap-3 rounded-full bg-white px-6 py-3.5 text-sm font-semibold text-black transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_15px_40px_rgba(255,255,255,0.15)]"
             >
               Try Scene Finder

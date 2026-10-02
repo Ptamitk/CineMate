@@ -6,13 +6,14 @@ const {
 } = require("../services/telegram/telegramEvents.service");
 
 const authMiddleware = require("../middleware/auth.middleware");
+const SceneFinderJob = require("../models/sceneFinderJob.model");
 
 const router = express.Router();
 
 router.get(
   "/stream",
   authMiddleware,
-  (req, res) => {
+  async (req, res) => {
     const userId =
       req.userId.toString();
 
@@ -101,7 +102,7 @@ router.get(
 router.get(
   "/search-stream",
   authMiddleware,
-  (req, res) => {
+  async (req, res) => {
     const userId =
       req.userId.toString();
 
@@ -150,6 +151,43 @@ router.get(
           }
         }
       );
+
+    try {
+      const recentSceneJobs =
+        await SceneFinderJob.find({
+          user: userId,
+          updatedAt: {
+            $gte: new Date(
+              Date.now() - 15 * 60 * 1000
+            ),
+          },
+        })
+          .sort({ updatedAt: -1 })
+          .limit(5)
+          .lean();
+
+      for (const job of recentSceneJobs.reverse()) {
+        if (res.writableEnded) {
+          break;
+        }
+
+        res.write(
+          `data: ${JSON.stringify({
+            type: "scene",
+            jobId: job._id.toString(),
+            status: job.status,
+            result: job.result || null,
+            error: job.error || "",
+            updatedAt: job.updatedAt,
+          })}\n\n`
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Telegram Scene Replay Error:",
+        error.message
+      );
+    }
 
     const keepAlive =
       setInterval(() => {

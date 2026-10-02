@@ -206,7 +206,7 @@ const isUsefulSignal = (value = "") => {
 
   const words = text.split(/\s+/).filter(Boolean);
 
-  if (words.length < 2 || words.length > 12) {
+  if (words.length < 1 || words.length > 12) {
     return false;
   }
 
@@ -214,13 +214,20 @@ const isUsefulSignal = (value = "") => {
     words.map((word) => word.toLowerCase())
   );
 
-  if (uniqueWords.size < 2) {
+  if (
+    words.length === 1 &&
+    (
+      words[0].length < 4 ||
+      /^(the|this|that|with|from|your|have|feel|care|like|her|and|even)$/i.test(
+        words[0]
+      )
+    )
+  ) {
     return false;
   }
 
   const garbagePatterns = [
-    /^bahna$/i,
-    /^bahen$/i,
+    /^sp$/i,
     /^sp$/i,
     /^fyp$/i,
     /^viral$/i,
@@ -306,7 +313,7 @@ const getSearchQueries = ({
   addTextQueries(ocrText, "ocr");
   addTextQueries(speechText, "speech");
 
-  return unique(queries).slice(0, 8);
+  return unique(queries).slice(0, 5);
 };
 
 const getVisualSignals = (visualAnalysis) => {
@@ -340,6 +347,30 @@ const getVisualSignals = (visualAnalysis) => {
     });
 };
 
+const getVisualSearchQueries = (visualSignals = []) => {
+  const queries = [];
+
+  for (const item of visualSignals) {
+    const description = normalizeText(item?.description || "");
+
+    if (
+      description.length < 15 ||
+      description.length > 140 ||
+      /^(a|an|the) (photo|picture|image|close up|closeup)\b/i.test(description)
+    ) {
+      continue;
+    }
+
+    const words = description.split(/\s+/).filter(Boolean);
+
+    if (words.length >= 3 && words.length <= 18) {
+      queries.push(description);
+    }
+  }
+
+  return unique(queries).slice(0, 2);
+};
+
 const tmdbRequest = async (
   path,
   params = {}
@@ -363,9 +394,38 @@ const tmdbRequest = async (
     }
   );
 
-  const response = await fetch(url, {
-    headers: getHeaders(),
-  });
+  const controller = new AbortController();
+  const timeoutMs = Math.max(
+    5000,
+    Number(
+      process.env.SCENE_FINDER_TMDB_TIMEOUT_MS || 15000
+    )
+  );
+
+  const timeout = setTimeout(
+    () => controller.abort(),
+    timeoutMs
+  );
+
+  let response;
+
+  try {
+    response = await fetch(url, {
+      headers: getHeaders(),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(
+        `TMDB request timed out after ${timeoutMs}ms.`,
+        { cause: error }
+      );
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const body = await response.text();
@@ -470,6 +530,139 @@ const searchMulti = async (query) => {
           contentType: item.media_type,
         }))
     : [];
+};
+
+
+const discoverFallbackCandidates = async ({
+  captionType = "",
+}) => {
+  const mediaTypes =
+    captionType === "movie"
+      ? ["movie"]
+      : captionType === "tv"
+        ? ["tv"]
+        : ["movie", "tv"];
+
+  /*
+   * A popularity-only pool is biased toward currently trending titles.
+   * Reels frequently contain older Indian movies/series, so build a
+   * deterministic, diverse pool from popularity, vote-count and Hindi
+   * release-era slices. Each slice contributes a bounded number of
+   * candidates before the final deduplication.
+   */
+  const configurations = [
+    {
+      language: "en-US",
+      region: "IN",
+      sortBy: "popularity.desc",
+    },
+    {
+      language: "en-US",
+      region: "IN",
+      sortBy: "vote_count.desc",
+    },
+    {
+      language: "en-US",
+      region: "IN",
+      sortBy: "vote_average.desc",
+      voteCountGte: 100,
+    },
+    {
+      language: "en-US",
+      region: "IN",
+      withOriginalLanguage: "hi",
+      sortBy: "popularity.desc",
+      startYear: 1990,
+      endYear: 1999,
+    },
+    {
+      language: "en-US",
+      region: "IN",
+      withOriginalLanguage: "hi",
+      sortBy: "popularity.desc",
+      startYear: 2000,
+      endYear: 2009,
+    },
+    {
+      language: "en-US",
+      region: "IN",
+      withOriginalLanguage: "hi",
+      sortBy: "popularity.desc",
+      startYear: 2010,
+      endYear: 2019,
+    },
+    {
+      language: "en-US",
+      region: "IN",
+      withOriginalLanguage: "hi",
+      sortBy: "popularity.desc",
+      startYear: 2020,
+      endYear: 2029,
+    },
+  ];
+
+  const discovered = [];
+
+  for (const mediaType of mediaTypes) {
+    for (const configuration of configurations) {
+      const params = {
+        language: configuration.language,
+        region: configuration.region,
+        with_original_language:
+          configuration.withOriginalLanguage || undefined,
+        include_adult: false,
+        include_video:
+          mediaType === "movie" ? false : undefined,
+        include_null_first_air_dates:
+          mediaType === "tv" ? false : undefined,
+        sort_by: configuration.sortBy,
+        page: 1,
+        vote_count_gte:
+          configuration.voteCountGte || 10,
+      };
+
+      if (mediaType === "movie") {
+        if (configuration.startYear) {
+          params["primary_release_date.gte"] =
+            `${configuration.startYear}-01-01`;
+          params["primary_release_date.lte"] =
+            `${configuration.endYear}-12-31`;
+        }
+      } else if (configuration.startYear) {
+        params["first_air_date.gte"] =
+          `${configuration.startYear}-01-01`;
+        params["first_air_date.lte"] =
+          `${configuration.endYear}-12-31`;
+      }
+
+      try {
+        const data = await tmdbRequest(
+          `/discover/${mediaType}`,
+          params
+        );
+
+        if (Array.isArray(data.results)) {
+          discovered.push(
+            ...data.results
+              .slice(0, 12)
+              .map((item) => ({
+                ...item,
+                contentType: mediaType,
+              }))
+          );
+        }
+      } catch (error) {
+        console.error(
+          `TMDB ${mediaType} fallback slice failed:`,
+          error.message
+        );
+      }
+    }
+  }
+
+  return deduplicateCandidates(
+    discovered.map(toCandidate)
+  ).slice(0, 120);
 };
 
 const toCandidate = (item) => {
@@ -580,24 +773,15 @@ const findSceneCandidates = async ({
     queries
   );
 
-  if (!queries.length) {
-    console.log(
-      "No reliable text-based scene queries found."
+  const visualQueries =
+    getVisualSearchQueries(
+      visualSignals
     );
 
-    return {
-      candidates: [],
-      extractedCaptionTitle: "",
-      captionYear: null,
-      captionType: "",
-      queries: [],
-      visualSignals,
-    };
-  }
-
   const allCandidates = [];
+  const searchedQueries = [];
 
-  for (const query of queries) {
+  const searchQuery = async (query) => {
     const year =
       captionInfo.title &&
       normalizeTitle(query) ===
@@ -607,7 +791,7 @@ const findSceneCandidates = async ({
         ? captionInfo.year
         : null;
 
-    let results = [];
+    let results;
 
     if (
       captionInfo.type === "movie"
@@ -651,20 +835,90 @@ const findSceneCandidates = async ({
       }
     }
 
+    searchedQueries.push(query);
     allCandidates.push(
-      ...results.map(toCandidate)
+      ...results.map(toCandidate).slice(0, 20)
     );
+
+    return results.length;
+  };
+
+  for (const query of queries) {
+    await searchQuery(query);
   }
 
-  const candidates =
+  let candidates =
     deduplicateCandidates(
       allCandidates
     ).slice(0, 60);
 
+  /*
+   * Vision fallback:
+   * Text is preferred because OCR/speech/caption can carry
+   * title-level evidence. If text search produces nothing,
+   * use a small number of visual descriptions to discover
+   * TMDB candidates, then let CLIP/matcher decide.
+   */
+  if (!candidates.length && visualQueries.length) {
+    console.log(
+      "Text candidate search returned 0 candidates. Starting vision candidate fallback:",
+      visualQueries
+    );
+
+    for (const query of visualQueries) {
+      await searchQuery(query);
+
+      candidates =
+        deduplicateCandidates(
+          allCandidates
+        ).slice(0, 60);
+
+      if (candidates.length >= 20) {
+        break;
+      }
+    }
+  }
+
+  /*
+   * Broad visual-candidate fallback:
+   * Generic image captions are not movie titles, so TMDB text search
+   * can legitimately return zero results. In that case build a bounded
+   * popularity pool from TMDB and let the visual recognition stage
+   * identify the title from the actual frame instead.
+   *
+   * The pool is intentionally India-aware because Scene Finder is
+   * expected to receive Indian reels as well as global content.
+   */
+  if (!candidates.length) {
+    console.log(
+      "No text/visual-search candidates. Building TMDB visual candidate pool..."
+    );
+
+    try {
+      candidates =
+        await discoverFallbackCandidates({
+          captionType: captionInfo.type,
+        });
+
+      console.log(
+        "TMDB visual candidate pool:",
+        candidates.length
+      );
+    } catch (error) {
+      console.error(
+        "TMDB visual candidate pool failed:",
+        error.message
+      );
+    }
+  }
+
+  const searchQueries =
+    unique(searchedQueries).slice(0, 7);
+
   console.log(
     "Scene candidate search:",
     {
-      queries,
+      queries: searchQueries,
       extractedCaptionTitle:
         captionInfo.title,
       candidateCount:
@@ -674,6 +928,12 @@ const findSceneCandidates = async ({
     }
   );
 
+  if (!searchQueries.length) {
+    console.log(
+      "No reliable scene queries found from text or vision."
+    );
+  }
+
   return {
     candidates,
     extractedCaptionTitle:
@@ -682,7 +942,7 @@ const findSceneCandidates = async ({
       captionInfo.year,
     captionType:
       captionInfo.type,
-    queries,
+    queries: searchQueries,
     visualSignals,
   };
 };

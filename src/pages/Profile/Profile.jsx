@@ -87,7 +87,7 @@ const Profile = () => {
     if (token) {
       fetchProfile();
     }
-  }, [token]);
+  }, [token, updateUser]);
 
   const displayName =
     profile?.name?.trim() ||

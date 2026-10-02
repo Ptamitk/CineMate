@@ -2,12 +2,17 @@ import {
 createContext,
 useContext,
 useEffect,
+useRef,
 useState,
 } from "react";
 
 const AuthContext = createContext(null);
 
 const AUTH_STORAGE_KEY = "cinemate_auth";
+
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  "http://localhost:5000";
 
 export const AuthProvider = ({ children }) => {
 const [user, setUser] = useState(null);
@@ -21,6 +26,9 @@ useState(null);
 /* TELEGRAM SCENE FINDER */
 const [telegramSceneResult, setTelegramSceneResult] =
 useState(null);
+
+const seenSceneEventsRef = useRef(new Set());
+const latestSceneEventTimesRef = useRef(new Map());
 
 useEffect(() => {
 const restoreAuth = async () => {
@@ -47,7 +55,7 @@ localStorage.getItem(AUTH_STORAGE_KEY);
     }
 
     const response = await fetch(
-      "http://localhost:5000/api/auth/me",
+      `${API_BASE_URL}/api/auth/me`,
       {
         method: "GET",
         headers: {
@@ -105,16 +113,28 @@ useEffect(() => {
 if (!token) {
 setTelegramSearchResult(null);
 setTelegramSceneResult(null);
+seenSceneEventsRef.current.clear();
+latestSceneEventTimesRef.current.clear();
 return;
 }
 
-
-const controller = new AbortController();
+let stopped = false;
+let reconnectTimer = null;
+let controller = null;
+let reconnectDelay = 1000;
+const seenSceneEvents = seenSceneEventsRef.current;
+const latestSceneEventTimes = latestSceneEventTimesRef.current;
 
 const connectTelegramStream = async () => {
+  if (stopped) {
+    return;
+  }
+
+  controller = new AbortController();
+
   try {
     const response = await fetch(
-      "http://localhost:5000/api/telegram-events/search-stream",
+      `${API_BASE_URL}/api/telegram-events/search-stream`,
       {
         method: "GET",
         headers: {
@@ -137,63 +157,43 @@ const connectTelegramStream = async () => {
       );
     }
 
-    const reader =
-      response.body.getReader();
+    reconnectDelay = 1000;
 
-    const decoder =
-      new TextDecoder();
-
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
     let buffer = "";
 
-    while (true) {
-      const {
-        value,
-        done,
-      } = await reader.read();
+    while (!stopped) {
+      const { value, done } = await reader.read();
 
       if (done) {
         break;
       }
 
-      buffer += decoder.decode(
-        value,
-        {
-          stream: true,
-        }
-      );
+      buffer += decoder.decode(value, { stream: true });
 
-      const events =
-        buffer.split("\n\n");
-
-      buffer =
-        events.pop() || "";
+      const events = buffer.split("\n\n");
+      buffer = events.pop() || "";
 
       for (const event of events) {
-        const dataLine =
-          event
-            .split("\n")
-            .find((line) =>
-              line.startsWith("data:")
-            );
+        const dataLine = event
+          .split("\n")
+          .find((line) => line.startsWith("data:"));
 
         if (!dataLine) {
           continue;
         }
 
-        const jsonData =
-          dataLine
-            .replace(/^data:\s*/, "")
-            .trim();
+        const jsonData = dataLine
+          .replace(/^data:\s*/, "")
+          .trim();
 
         if (!jsonData) {
           continue;
         }
 
         try {
-          const data =
-            JSON.parse(jsonData);
-
-          /* MOVIE / TV SEARCH */
+          const data = JSON.parse(jsonData);
 
           if (
             data.type === "search" &&
@@ -202,14 +202,51 @@ const connectTelegramStream = async () => {
             setTelegramSearchResult(data);
           }
 
-          /* SCENE FINDER */
+          if (data.type === "scene") {
+            if (data.jobId && data.updatedAt) {
+              const incomingTime =
+                new Date(data.updatedAt).getTime();
+              const previousTime =
+                latestSceneEventTimes.get(data.jobId) || 0;
 
-          if (
-            data.type === "scene"
-          ) {
-            setTelegramSceneResult(
-              data
-            );
+              if (
+                Number.isFinite(incomingTime) &&
+                incomingTime < previousTime
+              ) {
+                continue;
+              }
+
+              if (Number.isFinite(incomingTime)) {
+                latestSceneEventTimes.set(
+                  data.jobId,
+                  incomingTime
+                );
+              }
+            }
+            const sceneEventKey =
+              data.jobId
+                ? `${data.jobId}:${data.status || "unknown"}`
+                : "";
+
+            if (
+              sceneEventKey &&
+              seenSceneEvents.has(sceneEventKey)
+            ) {
+              continue;
+            }
+
+            if (sceneEventKey) {
+              seenSceneEvents.add(sceneEventKey);
+
+              if (seenSceneEvents.size > 100) {
+                const oldestKey =
+                  seenSceneEvents.values().next().value;
+
+                seenSceneEvents.delete(oldestKey);
+              }
+            }
+
+            setTelegramSceneResult(data);
           }
         } catch (error) {
           console.error(
@@ -219,26 +256,53 @@ const connectTelegramStream = async () => {
         }
       }
     }
+
+    if (!stopped) {
+      scheduleReconnect();
+    }
   } catch (error) {
     if (
-      error.name !==
-      "AbortError"
+      error.name !== "AbortError" &&
+      !stopped
     ) {
       console.error(
         "Telegram SSE Connection Error:",
         error
       );
+
+      scheduleReconnect();
     }
   }
+};
+
+const scheduleReconnect = () => {
+  if (stopped || reconnectTimer) {
+    return;
+  }
+
+  const delay = reconnectDelay;
+  reconnectDelay = Math.min(
+    reconnectDelay * 2,
+    30000
+  );
+
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectTelegramStream();
+  }, delay);
 };
 
 connectTelegramStream();
 
 return () => {
-  controller.abort();
+  stopped = true;
+
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+  }
+
+  controller?.abort();
 };
-
-
 }, [token]);
 
 const login = (authData) => {

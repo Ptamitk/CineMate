@@ -1,5 +1,5 @@
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ArrowRight,
@@ -19,7 +19,9 @@ import { Link } from "react-router-dom";
 
 import { useAuth } from "../../context/AuthContext";
 
-const API_BASE_URL = "http://localhost:5000";
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  "http://localhost:5000";
 
 const analysisSteps = [
   {
@@ -61,18 +63,13 @@ const SceneFinder = () => {
   const pollingRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  const stopPolling = () => {
+  const stopPolling = useCallback(() => {
     if (pollingRef.current) {
       clearTimeout(pollingRef.current);
       pollingRef.current = null;
     }
-  };
-
-  useEffect(() => {
-    return () => {
-      stopPolling();
-    };
   }, []);
+
 
   /* ================= TELEGRAM SCENE RESULT ================= */
 
@@ -91,9 +88,18 @@ const SceneFinder = () => {
 
       setIsSearching(true);
       setAnalysisStep(0);
-      setJobId(
-        telegramSceneResult.jobId || null
-      );
+      const telegramJobId =
+        telegramSceneResult.jobId || null;
+
+      setJobId(telegramJobId);
+
+      if (telegramJobId) {
+        localStorage.setItem(
+          "cinemate_scene_finder_job",
+          telegramJobId
+        );
+      }
+
       setResult(null);
       setError("");
 
@@ -114,6 +120,12 @@ const SceneFinder = () => {
     setJobId(
       telegramSceneResult.jobId || null
     );
+
+    if (telegramSceneResult.jobId) {
+      localStorage.removeItem(
+        "cinemate_scene_finder_job"
+      );
+    }
 
     setError(
       telegramSceneResult.error || ""
@@ -138,7 +150,10 @@ const SceneFinder = () => {
           "Scene Identified",
 
         year:
-          sceneResult.year || "—",
+          sceneResult.year ||
+          (sceneResult.releaseDate
+            ? String(sceneResult.releaseDate).slice(0, 4)
+            : "—"),
 
         rating:
           sceneResult.rating || "—",
@@ -154,6 +169,14 @@ const SceneFinder = () => {
 
         image:
           sceneResult.image || "",
+
+        evidenceType:
+          sceneResult.evidenceType || "",
+
+        sceneScore:
+          typeof sceneResult.sceneScore === "number"
+            ? sceneResult.sceneScore
+            : null,
       });
     } else if (
       telegramSceneResult.status ===
@@ -181,6 +204,7 @@ const SceneFinder = () => {
   }, [
     telegramSceneResult,
     clearTelegramSceneResult,
+    stopPolling,
   ]);
 
   /* ================= ANALYSIS STEP ANIMATION ================= */
@@ -245,7 +269,7 @@ const SceneFinder = () => {
     }
   };
 
-  const checkJobStatus = async (
+  const checkJobStatus = useCallback(async (
     currentJobId,
     token
   ) => {
@@ -264,6 +288,36 @@ const SceneFinder = () => {
         await response.json();
 
       if (!response.ok) {
+        if (
+          response.status === 401 ||
+          response.status === 403
+        ) {
+          stopPolling();
+          localStorage.removeItem(
+            "cinemate_scene_finder_job"
+          );
+          setIsSearching(false);
+          setJobId(null);
+          setError(
+            "Your session has expired. Please login again."
+          );
+          return;
+        }
+
+        if (response.status === 404) {
+          stopPolling();
+          localStorage.removeItem(
+            "cinemate_scene_finder_job"
+          );
+          setIsSearching(false);
+          setJobId(null);
+          setError(
+            data.message ||
+              "This Scene Finder job is no longer available."
+          );
+          return;
+        }
+
         throw new Error(
           data.message ||
             "Failed to fetch scene analysis status."
@@ -280,10 +334,15 @@ const SceneFinder = () => {
 
       if (job.status === "completed") {
         stopPolling();
+        localStorage.removeItem(
+          "cinemate_scene_finder_job"
+        );
 
         setIsSearching(false);
+        setJobId(null);
 
         if (!job.result?.title) {
+          setResult(null);
           setError(
             job.error ||
               "No confident scene match was found."
@@ -306,7 +365,10 @@ const SceneFinder = () => {
             "Scene Identified",
 
           year:
-            job.result?.year || "—",
+            job.result?.year ||
+            (job.result?.releaseDate
+              ? String(job.result.releaseDate).slice(0, 4)
+              : "—"),
 
           rating:
             job.result?.rating || "—",
@@ -322,6 +384,14 @@ const SceneFinder = () => {
 
           image:
             job.result?.image || "",
+
+          evidenceType:
+            job.result?.evidenceType || "",
+
+          sceneScore:
+            typeof job.result?.sceneScore === "number"
+              ? job.result.sceneScore
+              : null,
         });
 
         return;
@@ -329,6 +399,9 @@ const SceneFinder = () => {
 
       if (job.status === "failed") {
         stopPolling();
+        localStorage.removeItem(
+          "cinemate_scene_finder_job"
+        );
 
         setIsSearching(false);
 
@@ -336,6 +409,8 @@ const SceneFinder = () => {
           job.error ||
             "Scene analysis failed. Please try again."
         );
+        setResult(null);
+        setJobId(null);
 
         return;
       }
@@ -347,18 +422,16 @@ const SceneFinder = () => {
         error
       );
 
-      stopPolling();
-
-      setIsSearching(false);
-
-      setError(
-        error.message ||
-          "Something went wrong while checking the analysis."
-      );
+      /*
+       * A temporary network/server error must not
+       * kill an active Scene Finder job.
+       * The next polling attempt will retry it.
+       */
+      setIsSearching(true);
     }
-  };
+  }, [stopPolling]);
 
-  const startPolling = (
+  const startPolling = useCallback((
     currentJobId,
     token
   ) => {
@@ -384,7 +457,43 @@ const SceneFinder = () => {
         poll,
         0
       );
-  };
+  }, [checkJobStatus, stopPolling]);
+
+  useEffect(() => {
+    const storedJobId = localStorage.getItem(
+      "cinemate_scene_finder_job"
+    );
+
+    const storedAuth = localStorage.getItem(
+      "cinemate_auth"
+    );
+
+    let parsedAuth = null;
+
+    try {
+      parsedAuth = storedAuth
+        ? JSON.parse(storedAuth)
+        : null;
+    } catch {
+      // Invalid persisted auth should simply skip job recovery.
+    }
+
+    if (
+      storedJobId &&
+      parsedAuth?.token
+    ) {
+      setJobId(storedJobId);
+      setIsSearching(true);
+      startPolling(
+        storedJobId,
+        parsedAuth.token
+      );
+    }
+
+    return () => {
+      stopPolling();
+    };
+  }, [startPolling, stopPolling]);
 
   const handleIdentifyScene = async (
     event
@@ -483,6 +592,11 @@ const SceneFinder = () => {
       }
 
       setJobId(newJobId);
+
+      localStorage.setItem(
+        "cinemate_scene_finder_job",
+        newJobId
+      );
 
       startPolling(
         newJobId,
@@ -700,7 +814,11 @@ const SceneFinder = () => {
             </form>
 
             {error && (
-              <p className="mx-auto mt-4 max-w-2xl text-sm text-red-400">
+              <p
+                role="alert"
+                aria-live="assertive"
+                className="mx-auto mt-4 max-w-2xl text-sm text-red-400"
+              >
                 {error}
               </p>
             )}
@@ -708,7 +826,11 @@ const SceneFinder = () => {
             {isSearching &&
               jobId &&
               !error && (
-                <p className="mx-auto mt-4 max-w-2xl text-xs text-white/30">
+                <p
+                  className="mx-auto mt-4 max-w-2xl text-xs text-white/30"
+                  role="status"
+                  aria-live="polite"
+                >
                   Scene analysis is being processed...
                 </p>
               )}
@@ -874,7 +996,10 @@ const SceneFinder = () => {
         {/* ================= RESULT ================= */}
 
         {result && !isSearching && (
-          <section className="mt-10">
+          <section
+            className="mt-10"
+            aria-live="polite"
+          >
 
             <div className="mb-8">
 
@@ -984,6 +1109,17 @@ const SceneFinder = () => {
                         {result.confidence}%
                       </span>
 
+                    </div>
+                  )}
+
+                  {result.evidenceType && (
+                    <div className="mt-5 flex flex-wrap items-center gap-3 text-xs">
+                      <span className="uppercase tracking-wider text-white/30">
+                        Evidence
+                      </span>
+                      <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-white/55">
+                        {result.evidenceType.replace(/-/g, " ")}
+                      </span>
                     </div>
                   )}
 

@@ -94,6 +94,8 @@ framePath,
 {
 candidate_labels:
 candidateLabels,
+hypothesis_template:
+"A scene from the movie or TV show {}",
 }
 );
 
@@ -197,75 +199,127 @@ const scoreMap =
 new Map();
 
 for (const frame of frameResults) {
-for (const result of frame.results) {
-if (
-!scoreMap.has(result.label)
-) {
-scoreMap.set(
-result.label,
-{
-totalScore: 0,
-frameCount: 0,
-maxScore: 0,
-}
-);
-}
+  const frameMaxScore = Math.max(
+    ...frame.results.map(
+      (result) => Number(result.score || 0)
+    ),
+    0
+  );
 
-
-  const current =
-    scoreMap.get(
-      result.label
+  for (const result of frame.results) {
+    const rawScore = Number(
+      result.score || 0
     );
 
-  current.totalScore +=
-    result.score;
+    const relativeScore =
+      frameMaxScore > 0
+        ? rawScore / frameMaxScore
+        : 0;
 
-  current.frameCount += 1;
+    if (!scoreMap.has(result.label)) {
+      scoreMap.set(
+        result.label,
+        {
+          totalScore: 0,
+          frameCount: 0,
+          maxScore: 0,
+          totalRelativeScore: 0,
+          maxRelativeScore: 0,
+          topFrameCount: 0,
+        }
+      );
+    }
 
-  current.maxScore =
-    Math.max(
-      current.maxScore,
-      result.score
-    );
-}
+    const current =
+      scoreMap.get(result.label);
 
+    current.totalScore += rawScore;
+    current.frameCount += 1;
+    current.maxScore =
+      Math.max(
+        current.maxScore,
+        rawScore
+      );
 
+    current.totalRelativeScore +=
+      relativeScore;
+
+    current.maxRelativeScore =
+      Math.max(
+        current.maxRelativeScore,
+        relativeScore
+      );
+
+    /*
+     * A label being returned is not enough: CLIP returns every
+     * supplied label. Count a frame as supporting evidence only
+     * when the title is both near the frame winner and among the
+     * top two predictions.
+     */
+    const resultRank =
+      frame.results.findIndex(
+        (item) => item.label === result.label
+      );
+
+    if (
+      resultRank >= 0 &&
+      resultRank < 2 &&
+      relativeScore >= 0.75
+    ) {
+      current.topFrameCount += 1;
+    }
+  }
 }
 
 const matches =
 Array.from(
-scoreMap.entries()
+  scoreMap.entries()
 )
 .map(
-([
-label,
-data,
-]) => ({
-label,
+  ([
+    label,
+    data,
+  ]) => ({
+    label,
 
+    averageScore:
+      Number(
+        (
+          data.totalScore /
+          data.frameCount
+        ).toFixed(4)
+      ),
 
-      averageScore:
-        Number(
-          (
-            data.totalScore /
-            data.frameCount
-          ).toFixed(4)
-        ),
+    maxScore:
+      Number(
+        data.maxScore.toFixed(4)
+      ),
 
-      maxScore:
-        Number(
-          data.maxScore.toFixed(4)
-        ),
+    relativeAverageScore:
+      Number(
+        (
+          data.totalRelativeScore /
+          data.frameCount
+        ).toFixed(4)
+      ),
 
-      framesMatched:
-        data.frameCount,
-    })
-  )
-  .sort(
-    (a, b) =>
-      b.averageScore -
-      a.averageScore
-  );
+    relativeMaxScore:
+      Number(
+        data.maxRelativeScore.toFixed(4)
+      ),
+
+    framesMatched:
+      data.frameCount,
+
+    topFrameCount:
+      data.topFrameCount,
+  })
+)
+.sort(
+  (a, b) =>
+    b.relativeAverageScore -
+    a.relativeAverageScore
+);
 
 
 return {

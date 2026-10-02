@@ -13,7 +13,7 @@ value: "",
 }
 
 if (
-/^https?:///i.test(text)
+/^https?:\/\//i.test(text)
 ) {
 return {
 type: "link",

@@ -7,7 +7,6 @@ import {
   MessageCircle,
   Share2,
   Bookmark,
-  MoreHorizontal,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 

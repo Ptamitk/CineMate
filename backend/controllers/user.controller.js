@@ -1,7 +1,6 @@
 
 const User = require("../models/user.model");
 
-const cloudinary = require("../config/cloudinary");
 
 const {
   uploadToCloudinary,

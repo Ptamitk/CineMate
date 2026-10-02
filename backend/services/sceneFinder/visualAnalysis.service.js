@@ -2,7 +2,6 @@ const fs = require("fs");
 const { pipeline } = require("@huggingface/transformers");
 
 let imageToTextPipeline = null;
-let objectDetectionPipeline = null;
 
 const getImageToTextPipeline = async () => {
   if (!imageToTextPipeline) {
@@ -13,17 +12,6 @@ const getImageToTextPipeline = async () => {
   }
 
   return imageToTextPipeline;
-};
-
-const getObjectDetectionPipeline = async () => {
-  if (!objectDetectionPipeline) {
-    objectDetectionPipeline = await pipeline(
-      "object-detection",
-      "Xenova/detr-resnet-50"
-    );
-  }
-
-  return objectDetectionPipeline;
 };
 
 const analyzeVisualFrames = async ({
@@ -40,8 +28,13 @@ const analyzeVisualFrames = async ({
     };
   }
 
+  /*
+   * Scene matching currently uses the generated visual
+   * description, not object detections. Loading DETR added
+   * another large model and significant memory pressure without
+   * contributing to the final score.
+   */
   const imageToText = await getImageToTextPipeline();
-  const objectDetector = await getObjectDetectionPipeline();
 
   const visualSignals = [];
 
@@ -55,15 +48,7 @@ const analyzeVisualFrames = async ({
     }
 
     try {
-      const [
-        captionResult,
-        objectResult,
-      ] = await Promise.all([
-        imageToText(framePath),
-        objectDetector(framePath, {
-          threshold: 0.65,
-        }),
-      ]);
+      const captionResult = await imageToText(framePath);
 
       const description =
         Array.isArray(captionResult) &&
@@ -71,27 +56,11 @@ const analyzeVisualFrames = async ({
           ? captionResult[0].generated_text.trim()
           : "";
 
-      const objects =
-        Array.isArray(objectResult)
-          ? objectResult
-              .filter(
-                (item) =>
-                  item?.score >= 0.65 &&
-                  item?.label
-              )
-              .map((item) => ({
-                label: item.label,
-                score: Number(
-                  item.score.toFixed(4)
-                ),
-              }))
-          : [];
-
       visualSignals.push({
         framePath,
         analyzed: true,
         description,
-        objects,
+        objects: [],
         faces: [],
         visualEmbedding: null,
       });
@@ -99,11 +68,6 @@ const analyzeVisualFrames = async ({
       console.log(
         "VISION FRAME:",
         description
-      );
-
-      console.log(
-        "VISION OBJECTS:",
-        objects
       );
     } catch (error) {
       console.error(

@@ -10,12 +10,11 @@ const {
 
 const {
   emitTelegramSearchResult,
-  emitTelegramSceneResult,
 } = require("../services/telegram/telegramEvents.service");
 
 const {
-  processSceneFinderJob,
-} = require("../workers/sceneFinder.worker");
+  enqueueSceneFinderJob,
+} = require("../services/sceneFinder/sceneJobQueue.service");
 
 const SceneFinderJob =
   require("../models/sceneFinderJob.model");
@@ -26,7 +25,153 @@ const User =
 const router =
   express.Router();
 
-const isInstagramUrl = (
+const PAIRING_WINDOW_MS =
+  10 * 60 * 1000;
+
+const MAX_PAIRING_ATTEMPTS =
+  5;
+
+const pairingAttempts = new Map();
+
+const TELEGRAM_UPDATE_TTL_MS =
+  15 * 60 * 1000;
+
+const TELEGRAM_UPDATE_PROCESSING_TTL_MS =
+  2 * 60 * 1000;
+
+const processedTelegramUpdates = new Map();
+
+const markTelegramUpdateProcessed = (
+  updateId
+) => {
+  if (
+    updateId === undefined ||
+    updateId === null
+  ) {
+    return;
+  }
+
+  processedTelegramUpdates.set(
+    String(updateId),
+    {
+      status: "processed",
+      at: Date.now(),
+    }
+  );
+};
+
+const isDuplicateTelegramUpdate = (
+  updateId
+) => {
+  if (
+    updateId === undefined ||
+    updateId === null
+  ) {
+    return false;
+  }
+
+  const normalizedId = String(updateId);
+  const now = Date.now();
+  const entry =
+    processedTelegramUpdates.get(
+      normalizedId
+    );
+
+  if (
+    entry &&
+    now - entry.at < TELEGRAM_UPDATE_TTL_MS
+  ) {
+    return true;
+  }
+
+  processedTelegramUpdates.set(
+    normalizedId,
+    {
+      status: "processing",
+      at: now,
+    }
+  );
+
+  return false;
+};
+
+const isPairingRateLimited = (chatId) => {
+  const now = Date.now();
+  const entry = pairingAttempts.get(chatId);
+
+  if (!entry || now - entry.startedAt >= PAIRING_WINDOW_MS) {
+    pairingAttempts.set(chatId, {
+      startedAt: now,
+      count: 0,
+    });
+    return false;
+  }
+
+  if (entry.count >= MAX_PAIRING_ATTEMPTS) {
+    return true;
+  }
+
+  return false;
+};
+
+const recordPairingFailure = (chatId) => {
+  const now = Date.now();
+  const entry = pairingAttempts.get(chatId);
+
+  if (!entry || now - entry.startedAt >= PAIRING_WINDOW_MS) {
+    pairingAttempts.set(chatId, {
+      startedAt: now,
+      count: 1,
+    });
+    return;
+  }
+
+  entry.count += 1;
+};
+
+const clearPairingAttempts = (chatId) => {
+  pairingAttempts.delete(chatId);
+};
+
+const telegramUpdateCleanupTimer =
+  setInterval(() => {
+    const cutoff =
+      Date.now() - TELEGRAM_UPDATE_TTL_MS;
+
+    for (
+      const [updateId, processedAt]
+      of processedTelegramUpdates
+    ) {
+      if (
+        processedAt.at < cutoff ||
+        (
+          processedAt.status === "processing" &&
+          Date.now() - processedAt.at >
+            TELEGRAM_UPDATE_PROCESSING_TTL_MS
+        )
+      ) {
+        processedTelegramUpdates.delete(
+          updateId
+        );
+      }
+    }
+  }, TELEGRAM_UPDATE_TTL_MS);
+
+telegramUpdateCleanupTimer.unref?.();
+
+const pairingCleanupTimer = setInterval(() => {
+  const cutoff = Date.now() - PAIRING_WINDOW_MS;
+
+  for (const [chatId, entry] of pairingAttempts) {
+    if (entry.startedAt < cutoff) {
+      pairingAttempts.delete(chatId);
+    }
+  }
+}, PAIRING_WINDOW_MS);
+
+pairingCleanupTimer.unref?.();
+
+const getCanonicalInstagramUrl = (
   text = ""
 ) => {
   try {
@@ -36,34 +181,33 @@ const isInstagramUrl = (
       url.hostname.toLowerCase();
 
     const validHost =
-      hostname ===
-        "instagram.com" ||
-      hostname ===
-        "www.instagram.com" ||
-      hostname ===
-        "m.instagram.com" ||
-      hostname ===
-        "instagr.am" ||
-      hostname ===
-        "www.instagr.am";
+      hostname === "instagram.com" ||
+      hostname === "www.instagram.com" ||
+      hostname === "m.instagram.com" ||
+      hostname === "instagr.am" ||
+      hostname === "www.instagr.am";
 
     if (!validHost) {
-      return false;
+      return null;
     }
 
-    return (
+    const pathname =
       url.pathname
-        .toLowerCase()
-        .startsWith("/reel/") ||
-      url.pathname
-        .toLowerCase()
-        .startsWith("/reels/") ||
-      url.pathname
-        .toLowerCase()
-        .startsWith("/p/")
-    );
+        .replace(/\/+$/, "")
+        .toLowerCase();
+
+    const validPath =
+      pathname.startsWith("/reel/") ||
+      pathname.startsWith("/reels/") ||
+      pathname.startsWith("/p/");
+
+    if (!validPath) {
+      return null;
+    }
+
+    return `https://www.instagram.com${pathname}`;
   } catch {
-    return false;
+    return null;
   }
 };
 
@@ -90,11 +234,37 @@ const sendTelegramMessage = async (
 router.post(
   "/webhook",
   async (req, res) => {
+    const webhookSecret =
+      process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
+
+    if (webhookSecret) {
+      const receivedSecret =
+        req.get("X-Telegram-Bot-Api-Secret-Token");
+
+      if (
+        !receivedSecret ||
+        receivedSecret !== webhookSecret
+      ) {
+        return res.sendStatus(401);
+      }
+    }
     try {
+      const updateId =
+        req.body?.update_id;
+
+      if (
+        isDuplicateTelegramUpdate(
+          updateId
+        )
+      ) {
+        return res.sendStatus(200);
+      }
+
       const message =
         req.body?.message;
 
       if (!message?.chat?.id) {
+        markTelegramUpdateProcessed(updateId);
         return res.sendStatus(200);
       }
 
@@ -105,6 +275,7 @@ router.post(
         message.text?.trim() || "";
 
       if (!text) {
+        markTelegramUpdateProcessed(updateId);
         return res.sendStatus(200);
       }
 
@@ -117,6 +288,7 @@ router.post(
             "Then send:\n/connect YOUR_CODE"
         );
 
+        markTelegramUpdateProcessed(updateId);
         return res.sendStatus(200);
       }
 
@@ -139,6 +311,17 @@ router.post(
             "Please provide your CineMate pairing code.\n\nExample:\n/connect ABCD1234"
           );
 
+          markTelegramUpdateProcessed(updateId);
+          return res.sendStatus(200);
+        }
+
+        if (isPairingRateLimited(chatId)) {
+          await sendTelegramMessage(
+            chatId,
+            "Too many invalid pairing attempts. Please wait 10 minutes and generate a new code."
+          );
+
+          markTelegramUpdateProcessed(updateId);
           return res.sendStatus(200);
         }
 
@@ -153,11 +336,14 @@ router.post(
           });
 
         if (!user) {
+          recordPairingFailure(chatId);
+
           await sendTelegramMessage(
             chatId,
             "This pairing code is invalid or expired.\n\nGenerate a new code from CineMate."
           );
 
+          markTelegramUpdateProcessed(updateId);
           return res.sendStatus(200);
         }
 
@@ -179,6 +365,8 @@ router.post(
           }
         );
 
+        clearPairingAttempts(chatId);
+
         await sendTelegramMessage(
           chatId,
           "Telegram connected successfully!\n\n" +
@@ -188,6 +376,7 @@ router.post(
             "• Instagram Reel links"
         );
 
+        markTelegramUpdateProcessed(updateId);
         return res.sendStatus(
           200
         );
@@ -205,18 +394,23 @@ router.post(
           "Please connect your CineMate account first.\n\nOpen CineMate → Profile → Connect Telegram → Generate Code."
         );
 
+        markTelegramUpdateProcessed(updateId);
         return res.sendStatus(
           200
         );
       }
 
-      if (isInstagramUrl(text)) {
-        const existingJob =
+      const canonicalReelUrl =
+        getCanonicalInstagramUrl(text);
+
+      if (canonicalReelUrl) {
+        let existingJob =
           await SceneFinderJob.findOne(
             {
               user:
                 connectedUser._id,
-              reelUrl: text,
+              reelUrl:
+                canonicalReelUrl,
               status: {
                 $in: [
                   "pending",
@@ -232,49 +426,74 @@ router.post(
             "This Reel is already being analyzed.\n\nThe result will appear in CineMate."
           );
 
+          markTelegramUpdateProcessed(updateId);
           return res.sendStatus(
             200
           );
         }
 
-        const job =
-          await SceneFinderJob.create(
-            {
-              user:
-                connectedUser._id,
-              reelUrl: text,
-              videoPath: "",
-              status: "pending",
-            }
-          );
+        let job;
 
-        emitTelegramSceneResult(
-          connectedUser._id.toString(),
-          {
-            type: "scene",
-            jobId:
-              job._id.toString(),
-            status: "processing",
-            result: null,
-            error: "",
+        try {
+          job =
+            await SceneFinderJob.create(
+              {
+                user:
+                  connectedUser._id,
+                reelUrl:
+                  canonicalReelUrl,
+                videoPath: "",
+                source: "telegram",
+                status: "pending",
+              }
+            );
+        } catch (error) {
+          if (error?.code !== 11000) {
+            throw error;
           }
-        );
+
+          existingJob =
+            await SceneFinderJob.findOne(
+              {
+                user:
+                  connectedUser._id,
+                reelUrl:
+                  canonicalReelUrl,
+                status: {
+                  $in: [
+                    "pending",
+                    "processing",
+                  ],
+                },
+              }
+            );
+
+          if (existingJob) {
+            await sendTelegramMessage(
+              chatId,
+              "This Reel is already being analyzed.\n\nThe result will appear in CineMate."
+            );
+
+            markTelegramUpdateProcessed(updateId);
+            return res.sendStatus(
+              200
+            );
+          }
+
+          throw error;
+        }
 
         await sendTelegramMessage(
           chatId,
           "Reel received.\n\nCineMate is analyzing the scene.\n\nThe result will appear inside CineMate."
         );
 
+        markTelegramUpdateProcessed(updateId);
         res.sendStatus(200);
 
-        processSceneFinderJob(
+        enqueueSceneFinderJob(
           job._id.toString()
-        ).catch((error) => {
-          console.error(
-            "Telegram Scene Finder Worker Error:",
-            error.message
-          );
-        });
+        );
 
         return;
       }
@@ -301,6 +520,7 @@ router.post(
           `Search received: "${result.query}"\n\nCineMate will show the results in your app.`
         );
 
+        markTelegramUpdateProcessed(updateId);
         return res.sendStatus(
           200
         );
@@ -311,6 +531,7 @@ router.post(
         `I couldn't find a matching movie or TV show for "${text}".`
       );
 
+      markTelegramUpdateProcessed(updateId);
       return res.sendStatus(
         200
       );

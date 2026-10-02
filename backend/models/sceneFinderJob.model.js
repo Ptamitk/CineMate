@@ -22,6 +22,12 @@ const sceneFinderJobSchema = new mongoose.Schema(
       trim: true,
     },
 
+    source: {
+      type: String,
+      enum: ["web", "telegram"],
+      default: "web",
+      index: true,
+    },
 
     status: {
       type: String,
@@ -32,6 +38,24 @@ const sceneFinderJobSchema = new mongoose.Schema(
         "failed",
       ],
       default: "pending",
+      index: true,
+    },
+
+    processingStartedAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
+    processingHeartbeatAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
+    workerId: {
+      type: String,
+      default: "",
       index: true,
     },
 
@@ -70,6 +94,16 @@ const sceneFinderJobSchema = new mongoose.Schema(
         type: Number,
         default: null,
       },
+
+      sceneScore: {
+        type: Number,
+        default: null,
+      },
+
+      evidenceType: {
+        type: String,
+        default: "",
+      },
     },
 
     error: {
@@ -79,6 +113,23 @@ const sceneFinderJobSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+  }
+);
+
+sceneFinderJobSchema.index(
+  { user: 1, reelUrl: 1 },
+  {
+    unique: true,
+    name: "scene_finder_active_reel_unique",
+    partialFilterExpression: {
+      status: {
+        $in: ["pending", "processing"],
+      },
+      reelUrl: {
+        $type: "string",
+        $gt: "",
+      },
+    },
   }
 );
 
