@@ -812,7 +812,11 @@ const SceneFinder = () => {
             </form>
 
             {error && (
-              <p className="mx-auto mt-4 max-w-2xl text-sm text-red-400">
+              <p
+                role="alert"
+                aria-live="assertive"
+                className="mx-auto mt-4 max-w-2xl text-sm text-red-400"
+              >
                 {error}
               </p>
             )}
@@ -820,7 +824,11 @@ const SceneFinder = () => {
             {isSearching &&
               jobId &&
               !error && (
-                <p className="mx-auto mt-4 max-w-2xl text-xs text-white/30">
+                <p
+                  className="mx-auto mt-4 max-w-2xl text-xs text-white/30"
+                  role="status"
+                  aria-live="polite"
+                >
                   Scene analysis is being processed...
                 </p>
               )}
@@ -986,7 +994,10 @@ const SceneFinder = () => {
         {/* ================= RESULT ================= */}
 
         {result && !isSearching && (
-          <section className="mt-10">
+          <section
+            className="mt-10"
+            aria-live="polite"
+          >
 
             <div className="mb-8">
 
