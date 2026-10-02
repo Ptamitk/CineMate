@@ -1,5 +1,5 @@
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ArrowRight,
@@ -63,12 +63,12 @@ const SceneFinder = () => {
   const pollingRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  const stopPolling = () => {
+  const stopPolling = useCallback(() => {
     if (pollingRef.current) {
       clearTimeout(pollingRef.current);
       pollingRef.current = null;
     }
-  };
+  }, []);
 
 
   /* ================= TELEGRAM SCENE RESULT ================= */
@@ -268,7 +268,7 @@ const SceneFinder = () => {
     }
   };
 
-  const checkJobStatus = async (
+  const checkJobStatus = useCallback(async (
     currentJobId,
     token
   ) => {
@@ -428,9 +428,9 @@ const SceneFinder = () => {
        */
       setIsSearching(true);
     }
-  };
+  }, [stopPolling]);
 
-  const startPolling = (
+  const startPolling = useCallback((
     currentJobId,
     token
   ) => {
@@ -456,7 +456,7 @@ const SceneFinder = () => {
         poll,
         0
       );
-  };
+  }, [checkJobStatus, stopPolling]);
 
   useEffect(() => {
     const storedJobId = localStorage.getItem(
