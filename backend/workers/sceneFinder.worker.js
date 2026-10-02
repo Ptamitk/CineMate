@@ -28,6 +28,12 @@ const {
   emitTelegramSceneResult,
 } = require("../services/telegram/telegramEvents.service");
 
+const User = require("../models/user.model");
+
+const {
+  telegramRequest,
+} = require("../services/telegram/telegram.service");
+
 const normalizeCaption = (
   caption = ""
 ) => {
@@ -62,6 +68,68 @@ const emitSceneEvent = async (
     console.error(
       "Telegram Scene Event Error:",
       error.message
+    );
+  }
+};
+
+const sendTelegramFinalResult = async (
+  job,
+  status,
+  result,
+  error = ""
+) => {
+  if (
+    job?.source !== "telegram" ||
+    !job?.user
+  ) {
+    return;
+  }
+
+  try {
+    const user = await User.findById(job.user)
+      .select("telegramChatId")
+      .lean();
+
+    if (!user?.telegramChatId) {
+      return;
+    }
+
+    let message = "";
+
+    if (
+      status === "completed" &&
+      result?.title
+    ) {
+      const confidence =
+        typeof result.confidence === "number"
+          ? `\nConfidence: ${Math.round(result.confidence * 100)}%`
+          : "";
+
+      message =
+        `Scene identified: ${result.title}` +
+        (result.year
+          ? ` (${result.year})`
+          : "") +
+        confidence +
+        "\n\nOpen CineMate to view the full result.";
+    } else if (status === "failed") {
+      message =
+        "Scene analysis failed.\n\n" +
+        (error || "Please try the Reel again.");
+    } else {
+      message =
+        "No confident movie or TV match was found.\n\n" +
+        "Try a Reel with clearer dialogue, on-screen text, or a recognizable scene.";
+    }
+
+    await telegramRequest("sendMessage", {
+      chat_id: user.telegramChatId,
+      text: message,
+    });
+  } catch (telegramError) {
+    console.error(
+      "Telegram Final Result Error:",
+      telegramError.message
     );
   }
 };
@@ -233,6 +301,13 @@ const processSceneFinderJob = async (
         }
       );
 
+      await sendTelegramFinalResult(
+        updatedJob,
+        updatedJob?.status,
+        updatedJob?.result,
+        updatedJob?.error
+      );
+
       return;
     }
 
@@ -288,6 +363,13 @@ const processSceneFinderJob = async (
           updatedJob?.error,
       }
     );
+    
+    await sendTelegramFinalResult(
+      updatedJob,
+      updatedJob?.status,
+      updatedJob?.result,
+      updatedJob?.error
+    );
   } catch (error) {
     console.error(
       "Scene Finder Worker Error:",
@@ -326,6 +408,13 @@ const processSceneFinderJob = async (
         error:
           failedJob?.error,
       }
+    );
+    
+    await sendTelegramFinalResult(
+      failedJob,
+      failedJob?.status,
+      failedJob?.result,
+      failedJob?.error
     );
   } finally {
     await cleanupSceneFiles({
