@@ -25,6 +25,64 @@ const User =
 const router =
   express.Router();
 
+const PAIRING_WINDOW_MS =
+  10 * 60 * 1000;
+
+const MAX_PAIRING_ATTEMPTS =
+  5;
+
+const pairingAttempts = new Map();
+
+const isPairingRateLimited = (chatId) => {
+  const now = Date.now();
+  const entry = pairingAttempts.get(chatId);
+
+  if (!entry || now - entry.startedAt >= PAIRING_WINDOW_MS) {
+    pairingAttempts.set(chatId, {
+      startedAt: now,
+      count: 0,
+    });
+    return false;
+  }
+
+  if (entry.count >= MAX_PAIRING_ATTEMPTS) {
+    return true;
+  }
+
+  return false;
+};
+
+const recordPairingFailure = (chatId) => {
+  const now = Date.now();
+  const entry = pairingAttempts.get(chatId);
+
+  if (!entry || now - entry.startedAt >= PAIRING_WINDOW_MS) {
+    pairingAttempts.set(chatId, {
+      startedAt: now,
+      count: 1,
+    });
+    return;
+  }
+
+  entry.count += 1;
+};
+
+const clearPairingAttempts = (chatId) => {
+  pairingAttempts.delete(chatId);
+};
+
+const pairingCleanupTimer = setInterval(() => {
+  const cutoff = Date.now() - PAIRING_WINDOW_MS;
+
+  for (const [chatId, entry] of pairingAttempts) {
+    if (entry.startedAt < cutoff) {
+      pairingAttempts.delete(chatId);
+    }
+  }
+}, PAIRING_WINDOW_MS);
+
+pairingCleanupTimer.unref?.();
+
 const getCanonicalInstagramUrl = (
   text = ""
 ) => {
@@ -154,6 +212,15 @@ router.post(
           return res.sendStatus(200);
         }
 
+        if (isPairingRateLimited(chatId)) {
+          await sendTelegramMessage(
+            chatId,
+            "Too many invalid pairing attempts. Please wait 10 minutes and generate a new code."
+          );
+
+          return res.sendStatus(200);
+        }
+
         const user =
           await User.findOne({
             telegramLinkCode:
@@ -165,6 +232,8 @@ router.post(
           });
 
         if (!user) {
+          recordPairingFailure(chatId);
+
           await sendTelegramMessage(
             chatId,
             "This pairing code is invalid or expired.\n\nGenerate a new code from CineMate."
@@ -190,6 +259,8 @@ router.post(
             },
           }
         );
+
+        clearPairingAttempts(chatId);
 
         await sendTelegramMessage(
           chatId,
