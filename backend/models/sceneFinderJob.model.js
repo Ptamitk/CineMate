@@ -41,6 +41,24 @@ const sceneFinderJobSchema = new mongoose.Schema(
       index: true,
     },
 
+    processingStartedAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
+    processingHeartbeatAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
+    workerId: {
+      type: String,
+      default: "",
+      index: true,
+    },
+
     result: {
       contentId: {
         type: Number,
