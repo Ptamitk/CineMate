@@ -1002,6 +1002,7 @@ const matchSceneCandidates = ({
             speechText,
             visualSignals,
             visualRecognitionMatches,
+            artworkSimilarityMatches,
           });
 
         console.log(
