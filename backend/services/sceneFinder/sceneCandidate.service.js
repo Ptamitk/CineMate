@@ -306,7 +306,7 @@ const getSearchQueries = ({
   addTextQueries(ocrText, "ocr");
   addTextQueries(speechText, "speech");
 
-  return unique(queries).slice(0, 8);
+  return unique(queries).slice(0, 5);
 };
 
 const getVisualSignals = (visualAnalysis) => {
