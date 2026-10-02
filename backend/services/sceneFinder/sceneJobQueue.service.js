@@ -76,33 +76,22 @@ const drainQueue = () => {
 
   draining = true;
 
-  Promise.resolve()
-    .then(async () => {
-      while (
-        activeJobs.size <
-          MAX_CONCURRENT_JOBS &&
-        queue.length > 0
-      ) {
-        await runNextJob();
-      }
-    })
-    .catch((error) => {
-      console.error(
-        "Scene Finder Queue Drain Error:",
-        error.message
-      );
-    })
-    .finally(() => {
-      draining = false;
-
-      if (
-        activeJobs.size <
-          MAX_CONCURRENT_JOBS &&
-        queue.length > 0
-      ) {
-        drainQueue();
-      }
-    });
+  try {
+    while (
+      activeJobs.size <
+        MAX_CONCURRENT_JOBS &&
+      queue.length > 0
+    ) {
+      runNextJob().catch((error) => {
+        console.error(
+          "Scene Finder Queue Job Start Error:",
+          error.message
+        );
+      });
+    }
+  } finally {
+    draining = false;
+  }
 };
 
 const recoverSceneFinderJobs = async () => {
