@@ -78,31 +78,84 @@ const analyzeScene = async ({
           candidate.title,
           candidate.originalTitle,
         ])
-    ).slice(0, 60);
+    );
 
     /*
-     * Two-stage visual retrieval:
-     * 1) Broad pass: compare a balanced set of frames against a
-     *    larger title pool to avoid missing the real title.
-     * 2) Refined pass: re-check the strongest titles across the
-     *    complete video frame selection.
+     * IMPORTANT:
+     * Never let the first N TMDB candidates decide which titles CLIP
+     * is allowed to see. That created a "forced winner" problem:
+     * if the real title was candidate #61+, CLIP could never select it.
      *
-     * This is much safer than either checking only 24 titles or
-     * running the expensive full pool against every frame.
+     * Broad retrieval now evaluates the ENTIRE bounded candidate pool
+     * in small chunks. Scores from different chunks are used only for
+     * shortlist generation; the final decision is made by one common
+     * refined CLIP pass, where all shortlisted titles compete against
+     * each other in the same label set.
      */
-    const broadVisualRecognition =
-      await analyzeVisualRecognition({
-        frameFiles: selectUsefulFrames({
-          frameFiles: visualFrames,
-          maxFrames: 4,
-        }),
-        candidateLabels:
-          visualCandidateLabels,
-      });
+    const broadFrames = selectUsefulFrames({
+      frameFiles: visualFrames,
+      maxFrames: 4,
+    });
 
+    const chunkSize = 30;
+    const broadMatches = [];
+
+    for (
+      let start = 0;
+      start < visualCandidateLabels.length;
+      start += chunkSize
+    ) {
+      const chunkLabels =
+        visualCandidateLabels.slice(
+          start,
+          start + chunkSize
+        );
+
+      if (!chunkLabels.length) {
+        continue;
+      }
+
+      try {
+        const chunkRecognition =
+          await analyzeVisualRecognition({
+            frameFiles: broadFrames,
+            candidateLabels: chunkLabels,
+          });
+
+        broadMatches.push(
+          ...chunkRecognition.matches
+        );
+      } catch (error) {
+        console.error(
+          "Broad visual retrieval chunk failed:",
+          error.message
+        );
+      }
+    }
+
+    /*
+     * Across chunks, relativeAverageScore is the useful ranking
+     * signal. Prefer repeated frame agreement over a single-frame
+     * spike, and keep only a compact shortlist for the expensive
+     * all-frame refinement pass.
+     */
     const refinedLabels = unique(
-      broadVisualRecognition.matches
-        .slice(0, 20)
+      broadMatches
+        .sort((a, b) => {
+          const repeatedFrameDifference =
+            Number(b.topFrameCount || 0) -
+            Number(a.topFrameCount || 0);
+
+          if (repeatedFrameDifference !== 0) {
+            return repeatedFrameDifference;
+          }
+
+          return (
+            Number(b.relativeAverageScore || 0) -
+            Number(a.relativeAverageScore || 0)
+          );
+        })
+        .slice(0, 24)
         .map((match) => match.label)
     );
 
@@ -113,7 +166,10 @@ const analyzeScene = async ({
           candidateLabels: refinedLabels,
         });
     } else {
-      visualRecognition = broadVisualRecognition;
+      visualRecognition = {
+        framesAnalyzed: 0,
+        matches: [],
+      };
     }
 
     console.log(
