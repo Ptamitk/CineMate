@@ -244,6 +244,7 @@ router.post(
                 connectedUser._id,
               reelUrl: text,
               videoPath: "",
+              source: "telegram",
               status: "pending",
             }
           );
