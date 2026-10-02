@@ -154,11 +154,30 @@ const processSceneFinderJob = async (
       );
     }
 
-    await SceneFinderJob.findByIdAndUpdate(
-      jobId,
+    const processingJob =
+      await SceneFinderJob.findByIdAndUpdate(
+        jobId,
+        {
+          status: "processing",
+          error: "",
+        },
+        {
+          new: true,
+        }
+      );
+
+    await emitSceneEvent(
+      processingJob?.user,
       {
-        status: "processing",
-        error: "",
+        type: "scene",
+        jobId:
+          processingJob?._id?.toString(),
+        status:
+          processingJob?.status,
+        result:
+          processingJob?.result || null,
+        error:
+          processingJob?.error || "",
       }
     );
 
