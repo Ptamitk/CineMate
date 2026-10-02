@@ -70,41 +70,6 @@ const SceneFinder = () => {
     }
   };
 
-  useEffect(() => {
-    const storedJobId = localStorage.getItem(
-      "cinemate_scene_finder_job"
-    );
-
-    const storedAuth = localStorage.getItem(
-      "cinemate_auth"
-    );
-
-    let parsedAuth = null;
-
-    try {
-      parsedAuth = storedAuth
-        ? JSON.parse(storedAuth)
-        : null;
-    } catch {
-      parsedAuth = null;
-    }
-
-    if (
-      storedJobId &&
-      parsedAuth?.token
-    ) {
-      setJobId(storedJobId);
-      setIsSearching(true);
-      startPolling(
-        storedJobId,
-        parsedAuth.token
-      );
-    }
-
-    return () => {
-      stopPolling();
-    };
-  }, []);
 
   /* ================= TELEGRAM SCENE RESULT ================= */
 
@@ -492,6 +457,42 @@ const SceneFinder = () => {
         0
       );
   };
+
+  useEffect(() => {
+    const storedJobId = localStorage.getItem(
+      "cinemate_scene_finder_job"
+    );
+
+    const storedAuth = localStorage.getItem(
+      "cinemate_auth"
+    );
+
+    let parsedAuth = null;
+
+    try {
+      parsedAuth = storedAuth
+        ? JSON.parse(storedAuth)
+        : null;
+    } catch {
+      // Invalid persisted auth should simply skip job recovery.
+    }
+
+    if (
+      storedJobId &&
+      parsedAuth?.token
+    ) {
+      setJobId(storedJobId);
+      setIsSearching(true);
+      startPolling(
+        storedJobId,
+        parsedAuth.token
+      );
+    }
+
+    return () => {
+      stopPolling();
+    };
+  }, [startPolling]);
 
   const handleIdentifyScene = async (
     event
