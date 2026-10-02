@@ -525,6 +525,71 @@ const searchMulti = async (query) => {
     : [];
 };
 
+
+const discoverFallbackCandidates = async ({
+  captionType = "",
+}) => {
+  const discovered = [];
+
+  const mediaTypes =
+    captionType === "movie"
+      ? ["movie"]
+      : captionType === "tv"
+        ? ["tv"]
+        : ["movie", "tv"];
+
+  const discoverPages = async (mediaType, params) => {
+    for (const page of [1, 2]) {
+      const data = await tmdbRequest(
+        `/discover/${mediaType}`,
+        {
+          language: params.language,
+          region: params.region,
+          with_original_language:
+            params.withOriginalLanguage || undefined,
+          include_adult: false,
+          include_video:
+            mediaType === "movie" ? false : undefined,
+          include_null_first_air_dates:
+            mediaType === "tv" ? false : undefined,
+          sort_by: "popularity.desc",
+          page,
+          vote_count_gte: 10,
+        }
+      );
+
+      if (Array.isArray(data.results)) {
+        discovered.push(
+          ...data.results.map((item) => ({
+            ...item,
+            contentType: mediaType,
+          }))
+        );
+      }
+    }
+  };
+
+  for (const mediaType of mediaTypes) {
+    await discoverPages(mediaType, {
+      language: "en-US",
+      region: "IN",
+    });
+  }
+
+  for (const mediaType of mediaTypes) {
+    await discoverPages(mediaType, {
+      language: "en-US",
+      region: "",
+      withOriginalLanguage: "hi",
+    });
+  }
+
+  return deduplicateCandidates(
+    discovered.map(toCandidate)
+  ).slice(0, 120);
+};
+
+
 const toCandidate = (item) => {
   const contentType =
     item.contentType;
@@ -736,6 +801,39 @@ const findSceneCandidates = async ({
       if (candidates.length >= 20) {
         break;
       }
+    }
+  }
+
+  /*
+   * Broad visual-candidate fallback:
+   * Generic image captions are not movie titles, so TMDB text search
+   * can legitimately return zero results. In that case build a bounded
+   * popularity pool from TMDB and let the visual recognition stage
+   * identify the title from the actual frame instead.
+   *
+   * The pool is intentionally India-aware because Scene Finder is
+   * expected to receive Indian reels as well as global content.
+   */
+  if (!candidates.length) {
+    console.log(
+      "No text/visual-search candidates. Building TMDB visual candidate pool..."
+    );
+
+    try {
+      candidates =
+        await discoverFallbackCandidates({
+          captionType: captionInfo.type,
+        });
+
+      console.log(
+        "TMDB visual candidate pool:",
+        candidates.length
+      );
+    } catch (error) {
+      console.error(
+        "TMDB visual candidate pool failed:",
+        error.message
+      );
     }
   }
 
