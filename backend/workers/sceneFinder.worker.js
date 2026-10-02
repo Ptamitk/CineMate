@@ -36,7 +36,17 @@ const {
   telegramRequest,
 } = require("../services/telegram/telegram.service");
 
-const WORKER_ID = `scene-${process.pid}-${crypto.randomUUID()}`;
+const WORKER_ID = `scene-${process.pid}-${crypto.randomUUID()}`;\n\nconst normalizeWorkerError = (error) => {
+  const message =
+    error?.message ||
+    String(error || "Scene Finder processing failed.");
+
+  return message.length > 1000
+    ? `${message.slice(0, 997)}...`
+    : message;
+};
+
+
 
 const PROCESSING_STALE_MS = Math.max(
   60 * 1000,
@@ -601,8 +611,7 @@ const processSceneFinderJob = async (
           $set: {
             status: "failed",
             error:
-              error.message ||
-              "Scene processing failed.",
+              normalizeWorkerError(error),
           },
         }
       );
