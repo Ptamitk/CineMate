@@ -57,6 +57,12 @@ const TrendingMovies = () => {
   const sectionRef = useRef(null);
 
   useLayoutEffect(() => {
+    const section = sectionRef.current;
+
+    if (!section) {
+      return undefined;
+    }
+
     const ctx = gsap.context(() => {
       const isMobile = window.innerWidth < 768;
 
@@ -206,11 +212,11 @@ const TrendingMovies = () => {
           };
         });
       }
-    }, sectionRef);
+    }, section);
 
     return () => {
       const cards =
-        sectionRef.current?.querySelectorAll(
+        section.querySelectorAll(
           ".movie-card"
         );
 
