@@ -4,7 +4,6 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import {
   CheckCheck,
-  MessageCircle,
   MoreVertical,
   Phone,
   Search,
