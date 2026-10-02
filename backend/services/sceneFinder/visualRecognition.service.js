@@ -5,6 +5,262 @@ let pipelinePromise = null;
 const MODEL_NAME =
 "Xenova/clip-vit-base-patch32";
 
+let imageEmbeddingPipelinePromise = null;
+
+const loadImageEmbeddingModel = async () => {
+  if (!imageEmbeddingPipelinePromise) {
+    imageEmbeddingPipelinePromise =
+      import("@huggingface/transformers")
+        .then(async ({ pipeline }) => {
+          console.log(
+            "Loading CLIP image embedding model..."
+          );
+
+          const model = await pipeline(
+            "image-feature-extraction",
+            MODEL_NAME
+          );
+
+          console.log(
+            "CLIP image embedding model loaded successfully."
+          );
+
+          return model;
+        })
+        .catch((error) => {
+          imageEmbeddingPipelinePromise = null;
+
+          console.error(
+            "CLIP image embedding model loading failed:",
+            error.message
+          );
+
+          throw error;
+        });
+  }
+
+  return imageEmbeddingPipelinePromise;
+};
+
+const tensorToVectors = (output, expectedCount) => {
+  if (!output) {
+    return [];
+  }
+
+  const data = Array.from(output.data || output);
+  const size = Number(output.size || 0);
+
+  if (!data.length) {
+    return [];
+  }
+
+  const vectorSize =
+    size && expectedCount
+      ? Math.floor(size / expectedCount)
+      : 512;
+
+  const vectors = [];
+
+  for (
+    let index = 0;
+    index + vectorSize <= data.length;
+    index += vectorSize
+  ) {
+    const vector = data
+      .slice(index, index + vectorSize)
+      .map(Number);
+
+    const magnitude = Math.sqrt(
+      vector.reduce(
+        (sum, value) =>
+          sum + value * value,
+        0
+      )
+    );
+
+    if (!magnitude) {
+      continue;
+    }
+
+    vectors.push(
+      vector.map(
+        (value) => value / magnitude
+      )
+    );
+  }
+
+  return vectors;
+};
+
+const cosineSimilarity = (a, b) => {
+  const length = Math.min(
+    a.length,
+    b.length
+  );
+
+  let score = 0;
+
+  for (let index = 0; index < length; index += 1) {
+    score += a[index] * b[index];
+  }
+
+  return score;
+};
+
+const extractImageEmbeddings = async (
+  images = []
+) => {
+  if (!Array.isArray(images) || !images.length) {
+    return [];
+  }
+
+  const model =
+    await loadImageEmbeddingModel();
+
+  const output = await model(
+    images,
+    {
+      pool: true,
+    }
+  );
+
+  return tensorToVectors(
+    output,
+    images.length
+  );
+};
+
+const analyzeArtworkSimilarity = async ({
+  frameFiles = [],
+  candidateArtwork = [],
+}) => {
+  if (
+    !Array.isArray(frameFiles) ||
+    !frameFiles.length ||
+    !Array.isArray(candidateArtwork) ||
+    !candidateArtwork.length
+  ) {
+    return [];
+  }
+
+  const validArtwork =
+    candidateArtwork.filter(
+      (item) =>
+        item?.label &&
+        item?.imageUrl
+    );
+
+  if (!validArtwork.length) {
+    return [];
+  }
+
+  try {
+    /*
+     * Transformers.js accepts local paths as one batch and remote
+     * URLs as another. Keep the two input types separate.
+     */
+    const [
+      frameEmbeddings,
+      artworkEmbeddings,
+    ] = await Promise.all([
+      extractImageEmbeddings(
+        frameFiles
+      ),
+      extractImageEmbeddings(
+        validArtwork.map(
+          (item) => item.imageUrl
+        )
+      ),
+    ]);
+
+    if (
+      frameEmbeddings.length !==
+        frameFiles.length ||
+      artworkEmbeddings.length !==
+        validArtwork.length
+    ) {
+      return [];
+    }
+
+    return validArtwork
+      .map((candidate, candidateIndex) => {
+        const similarities =
+          frameEmbeddings.map(
+            (frameEmbedding) =>
+              cosineSimilarity(
+                frameEmbedding,
+                artworkEmbeddings[
+                  candidateIndex
+                ]
+              )
+          );
+
+        const sorted =
+          [...similarities].sort(
+            (a, b) => b - a
+          );
+
+        const topCount =
+          similarities.filter(
+            (score) => score >= 0.72
+          ).length;
+
+        const topScores =
+          sorted.slice(
+            0,
+            Math.min(3, sorted.length)
+          );
+
+        const averageTopScore =
+          topScores.length
+            ? topScores.reduce(
+                (sum, score) =>
+                  sum + score,
+                0
+              ) / topScores.length
+            : 0;
+
+        return {
+          label: candidate.label,
+          imageSimilarity:
+            Number(
+              Math.max(
+                0,
+                Math.min(
+                  1,
+                  averageTopScore
+                )
+              ).toFixed(4)
+            ),
+          imageMaxSimilarity:
+            Number(
+              Math.max(
+                0,
+                Math.min(
+                  1,
+                  sorted[0] || 0
+                )
+              ).toFixed(4)
+            ),
+          imageFramesMatched:
+            topCount,
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.imageSimilarity -
+          a.imageSimilarity
+      );
+  } catch (error) {
+    console.error(
+      "Artwork similarity analysis failed:",
+      error.message
+    );
+
+    return [];
+  }
+};
+
 /*
 Load the CLIP feature-extraction pipeline
 only once and reuse it for all frames.
@@ -337,4 +593,5 @@ matches,
 module.exports = {
 analyzeVisualRecognition,
 classifyFrame,
+analyzeArtworkSimilarity,
 };
