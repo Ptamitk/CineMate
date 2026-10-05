@@ -64,6 +64,51 @@ const temporalConsistency = (scores, threshold = 0.72) => {
   return Math.min(1, (longest / Math.max(2, scores.length)) * 1.8);
 };
 
+const remoteImageCache = new Map();
+
+const fetchRemoteImage = async (url) => {
+  if (!url) return null;
+  if (remoteImageCache.has(url)) return remoteImageCache.get(url);
+
+  const promise = (async () => {
+    let lastError = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const controller = new AbortController();
+      const timeout = setTimeout(
+        () => controller.abort(),
+        Math.max(5000, Number(process.env.SCENE_FINDER_IMAGE_FETCH_TIMEOUT_MS || 12000))
+      );
+      try {
+        const response = await fetch(url, {
+          headers: {
+            accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            "user-agent": "CineMate-SceneFinder/2.0",
+          },
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`Image HTTP ${response.status}`);
+        const contentType = response.headers.get("content-type") || "image/jpeg";
+        if (!contentType.toLowerCase().startsWith("image/")) {
+          throw new Error(`Unexpected image content type: ${contentType}`);
+        }
+        const buffer = Buffer.from(await response.arrayBuffer());
+        if (!buffer.length) throw new Error("Empty image response");
+        return `data:${contentType};base64,${buffer.toString("base64")}`;
+      } catch (error) {
+        lastError = error;
+        if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+    console.warn("Scene Finder artwork image skipped:", url, lastError?.message || "unknown error");
+    return null;
+  })();
+
+  remoteImageCache.set(url, promise);
+  return promise;
+};
+
 const analyzeArtworkSimilarity = async ({ frameFiles = [], candidateArtwork = [] }) => {
   if (!Array.isArray(frameFiles) || !frameFiles.length || !Array.isArray(candidateArtwork) || !candidateArtwork.length) return [];
   const validArtwork = candidateArtwork.filter(item => item?.imageUrl);
@@ -73,10 +118,16 @@ const analyzeArtworkSimilarity = async ({ frameFiles = [], candidateArtwork = []
     const frameEmbeddings = await extractImageEmbeddings(frameFiles);
     if (frameEmbeddings.length !== frameFiles.length) return [];
     const artworkResults = [];
+    const resolvedArtwork = [];
+    for (const item of validArtwork) {
+      const image = await fetchRemoteImage(item.imageUrl);
+      if (image) resolvedArtwork.push({ ...item, imageUrl: image });
+    }
+    if (!resolvedArtwork.length) return [];
     const chunkSize = Math.max(4, Math.min(24, Number(process.env.SCENE_FINDER_ARTWORK_EMBED_BATCH || 16)));
 
     for (let start = 0; start < validArtwork.length; start += chunkSize) {
-      const chunk = validArtwork.slice(start, start + chunkSize);
+      const chunk = resolvedArtwork.slice(start, start + chunkSize);
       const embeddings = await extractImageEmbeddings(chunk.map(item => item.imageUrl));
 
       for (let index = 0; index < chunk.length; index += 1) {
