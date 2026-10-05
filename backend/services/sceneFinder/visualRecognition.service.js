@@ -130,14 +130,23 @@ const analyzeCandidateVisualLabels = async ({ frameFiles = [], candidates = [] }
 
         const byLabel = new Map(results.map(result => [String(result.label), Number(result.score || 0)]));
         const raw = labels.map(label => byLabel.get(label) || 0);
-        const sorted = [...raw].sort((a, b) => b - a);
-        const high = sorted[0] || 0;
-        const low = sorted[Math.min(sorted.length - 1, Math.max(2, Math.floor(sorted.length * 0.65)))] || 0;
-        const range = Math.max(0.04, high - low);
+        const ranked = raw
+          .map((score, index) => ({ score, index }))
+          .sort((a, b) => b.score - a.score);
+        const winner = ranked[0] || { score: 0, index: -1 };
+        const runnerUp = ranked[1] || { score: 0, index: -1 };
+        const margin = Math.max(0, winner.score - runnerUp.score);
 
+        // Keep the model's raw probability and its per-frame winner margin.
+        // Do not min-max normalize against the other candidates: that made
+        // the best label become exactly 1.0 even when every label was poor.
         rows.forEach((row, index) => {
-          const score = raw[index];
-          row.frameScores.push(Math.max(0, Math.min(1, (score - low) / range)));
+          const score = Number(raw[index] || 0);
+          row.frameScores.push({
+            score,
+            margin: index === winner.index ? margin : 0,
+            winner: index === winner.index
+          });
         });
       } catch (error) {
         console.error("Candidate visual classification frame failed:", error.message);
@@ -145,21 +154,31 @@ const analyzeCandidateVisualLabels = async ({ frameFiles = [], candidates = [] }
     }
 
     return rows.map(row => {
-      const scores = row.frameScores;
-      const sorted = [...scores].sort((a, b) => b - a);
-      const top = sorted.slice(0, Math.min(5, sorted.length));
+      const frames = row.frameScores;
+      const ranked = frames.map(frame => frame.score).sort((a, b) => b - a);
+      const top = ranked.slice(0, Math.min(5, ranked.length));
       const average = top.length ? top.reduce((sum, value) => sum + value, 0) / top.length : 0;
-      const matched = scores.filter(value => value >= 0.65).length;
-      const temporal = temporalConsistency(scores, 0.65);
+      const matchedFrames = frames.filter(frame =>
+        frame.winner && frame.score >= 0.45 && frame.margin >= 0.08
+      );
+      const winningScores = frames.map(frame =>
+        frame.winner && frame.score >= 0.45 && frame.margin >= 0.08 ? frame.score : 0
+      );
+      const temporal = temporalConsistency(winningScores, 0.45);
+      const winningMargins = matchedFrames.map(frame => frame.margin);
+      const averageMargin = winningMargins.length
+        ? winningMargins.reduce((sum, value) => sum + value, 0) / winningMargins.length
+        : 0;
 
       return {
         contentId: row.item.contentId,
         contentType: row.item.contentType,
         label: row.item.title,
         visualLabelScore: Number(average.toFixed(4)),
-        visualLabelMax: Number((sorted[0] || 0).toFixed(4)),
-        visualLabelMatchedFrames: matched,
-        visualLabelTemporalConsistency: Number(temporal.toFixed(4))
+        visualLabelMax: Number((ranked[0] || 0).toFixed(4)),
+        visualLabelMatchedFrames: matchedFrames.length,
+        visualLabelTemporalConsistency: Number(temporal.toFixed(4)),
+        visualLabelMargin: Number(averageMargin.toFixed(4))
       };
     }).sort((a, b) => b.visualLabelScore - a.visualLabelScore);
   } catch (error) {
