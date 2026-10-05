@@ -141,7 +141,7 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
 
   const artworkCandidates = await getCandidateArtwork(
     candidates,
-    Math.min(candidates.length, Math.max(20, Number(process.env.SCENE_FINDER_ARTWORK_CANDIDATES || 48)))
+    Math.min(candidates.length, Math.max(20, Number(process.env.SCENE_FINDER_ARTWORK_CANDIDATES || 64)))
   );
 
   const tvCandidates = candidates.filter(x => x.contentType === "tv");
