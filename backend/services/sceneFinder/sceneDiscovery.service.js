@@ -138,13 +138,20 @@ const discoverSlices = async () => {
   const slices = [
     ["movie", { sort_by: "popularity.desc", region: "IN" }],
     ["movie", { sort_by: "vote_count.desc", region: "IN", vote_count_gte: 50 }],
+    ["movie", { sort_by: "vote_average.desc", region: "IN", vote_count_gte: 20 }],
+    ["movie", { sort_by: "primary_release_date.desc", region: "IN" }],
     ["movie", { sort_by: "popularity.desc", with_original_language: "hi", region: "IN" }],
+    ["movie", { sort_by: "popularity.desc", with_original_language: "ta", region: "IN" }],
+    ["movie", { sort_by: "popularity.desc", with_original_language: "te", region: "IN" }],
     ["tv", { sort_by: "popularity.desc", region: "IN" }],
     ["tv", { sort_by: "vote_count.desc", region: "IN", vote_count_gte: 50 }],
+    ["tv", { sort_by: "vote_average.desc", region: "IN", vote_count_gte: 20 }],
+    ["tv", { sort_by: "first_air_date.desc", region: "IN" }],
     ["tv", { sort_by: "popularity.desc", with_original_language: "hi", region: "IN" }],
+    ["tv", { sort_by: "popularity.desc", with_original_language: "ko", region: "IN" }],
   ];
 
-  const pages = Math.max(1, Math.min(2, Number(process.env.SCENE_FINDER_DISCOVERY_PAGES || 1)));
+  const pages = Math.max(1, Math.min(3, Number(process.env.SCENE_FINDER_DISCOVERY_PAGES || 2)));
   const tasks = slices.flatMap(([type, baseParams]) =>
     Array.from({ length: pages }, (_, i) => ({ type, baseParams, page: i + 1 }))
   );
@@ -247,7 +254,7 @@ const discoverSceneCandidates = async ({ caption = "", ocrText = "", speechText 
     candidates = dedupe([...candidates, ...broad]);
   }
 
-  const maxCandidates = Math.max(80, Number(process.env.SCENE_FINDER_MAX_CANDIDATES || 180));
+  const maxCandidates = Math.max(120, Number(process.env.SCENE_FINDER_MAX_CANDIDATES || 260));
   candidates = candidates
     .map(candidate => ({ candidate, retrievalScore: rankCandidate(candidate, queries) }))
     .sort((a, b) => b.retrievalScore - a.retrievalScore || (b.candidate.popularity || 0) - (a.candidate.popularity || 0))
