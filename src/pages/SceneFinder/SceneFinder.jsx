@@ -152,6 +152,8 @@ const SceneFinder = () => {
 
       setSearching(true);
     } catch (e) {
+      // Never let an older request change the state of the current analysis.
+      if (runToken !== analysisRunRef.current) return;
       console.error("Scene Finder polling error:", e);
       setSearching(true);
     }
