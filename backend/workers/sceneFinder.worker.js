@@ -227,7 +227,7 @@ const claimSceneFinderJob = async (
       },
     },
     {
-      new: true,
+      returnDocument: "after",
     }
   );
 };
@@ -251,7 +251,7 @@ const releaseSceneFinderJob = async (
       },
     },
     {
-      new: true,
+      returnDocument: "after",
     }
   );
 };
