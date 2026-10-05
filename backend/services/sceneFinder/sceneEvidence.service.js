@@ -197,18 +197,33 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
       label.visualLabelMax * 0.17 +
       label.visualLabelTemporalConsistency * 0.25;
 
+    // Relative CLIP evidence is intentionally calibrated separately from the
+    // absolute artwork cosine score. Artwork stills can differ substantially
+    // from the exact uploaded frame (crop, lighting, pose, subtitle overlay),
+    // while a repeated, high-margin label winner can remain highly useful.
     const visualScore = Math.max(
-      artworkScore * 0.38 + labelScore * 0.62,
+      artworkScore * 0.42 + labelScore * 0.58,
       labelScore
     );
 
+    const strongRelativeVisual =
+      label.visualLabelScore >= 0.52 &&
+      label.visualLabelMax >= 0.68 &&
+      label.visualLabelMatchedFrames >= 4 &&
+      label.visualLabelTemporalConsistency >= 0.35 &&
+      label.visualLabelMargin >= 0.18;
+
+    const strongArtworkVisual =
+      (art.average >= 0.58 && art.max >= 0.66 && art.matchedFrames >= 2) ||
+      (ep.average >= 0.58 && ep.max >= 0.64 && ep.matchedFrames >= 2);
+
     const visualCorroborated =
+      strongRelativeVisual ||
+      strongArtworkVisual ||
       (label.visualLabelScore >= 0.45 &&
         label.visualLabelMatchedFrames >= 3 &&
         label.visualLabelTemporalConsistency >= 0.25 &&
-        label.visualLabelMargin >= 0.08) ||
-      (art.average >= 0.60 && art.matchedFrames >= 2) ||
-      (ep.average >= 0.60 && ep.matchedFrames >= 2);
+        label.visualLabelMargin >= 0.08);
 
     const textCorroborated = t.exact || t.independent >= 1;
     let score = textScore * 0.25 + visualScore * 0.75;
@@ -263,11 +278,27 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
   // is never enough to accept a title.
   const visualAccepted = Boolean(best) &&
     best.evidenceType === "visual" &&
-    best.sceneScore >= 0.72 &&
     margin >= 0.07 &&
-    Number(best.evidence?.visualLabelScore || 0) >= 0.55 &&
-    Number(best.evidence?.visualLabelMatchedFrames || 0) >= 3 &&
-    Number(best.evidence?.visualLabelTemporalConsistency || 0) >= 0.30;
+    (
+      (
+        best.sceneScore >= 0.62 &&
+        Number(best.evidence?.visualLabelScore || 0) >= 0.52 &&
+        Number(best.evidence?.visualLabelMax || 0) >= 0.68 &&
+        Number(best.evidence?.visualLabelMatchedFrames || 0) >= 4 &&
+        Number(best.evidence?.visualLabelTemporalConsistency || 0) >= 0.35 &&
+        Number(best.evidence?.visualLabelMargin || 0) >= 0.18
+      ) ||
+      (
+        best.sceneScore >= 0.66 &&
+        Number(best.evidence?.artworkMatchedFrames || 0) >= 2 &&
+        Number(best.evidence?.artworkAverage || 0) >= 0.58
+      ) ||
+      (
+        best.sceneScore >= 0.66 &&
+        Number(best.evidence?.episodeArtworkMatchedFrames || 0) >= 2 &&
+        Number(best.evidence?.episodeArtworkAverage || 0) >= 0.58
+      )
+    );
 
   const corroboratedTextAccepted = Boolean(best) &&
     best.evidenceType === "text-corroborated" &&
