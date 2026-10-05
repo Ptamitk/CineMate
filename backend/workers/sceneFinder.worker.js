@@ -431,8 +431,8 @@ const processSceneFinderJob = async (
       await extractFrames({
         videoPath,
         intervalSeconds: 1.2,
-        maxFrames: 60,
-        ocrFrameCount: 24,
+        maxFrames: 48,
+        ocrFrameCount: 12,
       });
 
     frameDirectory =
