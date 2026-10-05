@@ -175,7 +175,7 @@ const analyzeArtworkSimilarity = async ({ frameFiles = [], candidateArtwork = []
           imageMaxSimilarity: Number(Math.max(0, Math.min(1, similarities[0] || 0)).toFixed(4)),
           imageFramesMatched: matchedIndexes.length,
           matchedFrameIndexes: matchedIndexes,
-          temporalConsistency: Number(temporalConsistency(frameScores).toFixed(4))
+          temporalConsistency: Number(temporalConsistency(frameScores, matchThreshold).toFixed(4))
         });
       }
     }
