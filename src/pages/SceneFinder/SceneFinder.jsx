@@ -447,34 +447,6 @@ const SceneFinder = () => {
           </AnimatePresence>
         </motion.section>
 
-        <motion.section initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.15 }} transition={{ duration: 0.7 }} className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5 sm:p-7 lg:p-8">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.22em] text-white/25">Recognition engine</p>
-              <h2 className="mt-2 text-3xl font-semibold tracking-tight">Four layers of evidence.</h2>
-            </div>
-            <div className="flex items-center gap-2 text-[11px] text-white/25">
-              <Zap size={14} />
-              Cross-checked before a result is shown
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {signals.map(([title, text], index) => (
-              <div
-                key={title}
-                className="group rounded-2xl border border-white/10 bg-black/25 p-4 transition duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.035]"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{title}</span>
-                  <span className="text-[10px] text-white/15">0{index + 1}</span>
-                 </div>
-                <p className="mt-2 text-xs leading-5 text-white/30">{text}</p>
-              </div>
-            ))}
-          </div>
-        </motion.section>
-
         <AnimatePresence mode="wait">
         {result && (
           <motion.section initial={{ opacity: 0, y: 28, scale: 0.99 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }} className="mt-6 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.025] shadow-2xl">
@@ -561,6 +533,35 @@ const SceneFinder = () => {
           </motion.section>
         )}
         </AnimatePresence>
+
+
+        <motion.section initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.15 }} transition={{ duration: 0.7 }} className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5 sm:p-7 lg:p-8">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.22em] text-white/25">Recognition engine</p>
+              <h2 className="mt-2 text-3xl font-semibold tracking-tight">Four layers of evidence.</h2>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] text-white/25">
+              <Zap size={14} />
+              Cross-checked before a result is shown
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {signals.map(([title, text], index) => (
+              <div
+                key={title}
+                className="group rounded-2xl border border-white/10 bg-black/25 p-4 transition duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.035]"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">{title}</span>
+                  <span className="text-[10px] text-white/15">0{index + 1}</span>
+                 </div>
+                <p className="mt-2 text-xs leading-5 text-white/30">{text}</p>
+              </div>
+            ))}
+          </div>
+        </motion.section>
 
         <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="mt-7 flex items-center justify-center gap-2 text-[10px] uppercase tracking-[0.18em] text-white/15">
           <CheckCircle2 size={13} />
