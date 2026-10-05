@@ -13,8 +13,8 @@ const MAX_VIDEO_DURATION_SECONDS = Math.max(
 const extractFrames = async ({
   videoPath,
   intervalSeconds = 1.5,
-  maxFrames = 60,
-  ocrFrameCount = 24,
+  maxFrames = 48,
+  ocrFrameCount = 8,
 }) => {
   if (!videoPath || !fs.existsSync(videoPath)) {
     throw new Error("Video file was not found.");
