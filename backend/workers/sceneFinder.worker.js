@@ -561,6 +561,12 @@ const processSceneFinderJob = async (
                 bestMatch.evidenceType || "",
               episode:
                 bestMatch.episode || null,
+              seasonNumber:
+                bestMatch.episode?.seasonNumber ?? null,
+              episodeNumber:
+                bestMatch.episode?.episodeNumber ?? null,
+              episodeName:
+                bestMatch.episode?.episodeName || "",
               evidence:
                 bestMatch.evidence || null,
             },
