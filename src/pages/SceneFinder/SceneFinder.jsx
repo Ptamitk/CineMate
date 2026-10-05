@@ -14,7 +14,6 @@ import {
   Zap,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
@@ -64,7 +63,6 @@ const formatTimestamp = (value) => {
 };
 
 const SceneFinder = () => {
-  const { telegramSceneResult, clearTelegramSceneResult } = useAuth();
   const [url, setUrl] = useState("");
   const [video, setVideo] = useState(null);
   const [searching, setSearching] = useState(false);
@@ -82,33 +80,6 @@ const SceneFinder = () => {
       pollRef.current = null;
     }
   }, []);
-
-  useEffect(() => {
-    if (!telegramSceneResult) return;
-
-    const incoming = telegramSceneResult;
-    stopPolling();
-
-    if (incoming.status === "processing" || incoming.status === "pending") {
-      setSearching(true);
-      setStep(0);
-      setJobId(incoming.jobId || null);
-      setResult(null);
-      setError("");
-    } else {
-      setSearching(false);
-      setJobId(incoming.jobId || null);
-      if (incoming.status === "completed" && incoming.result?.title) {
-        setResult(normalizeResult(incoming.result));
-        setError("");
-      } else {
-        setResult(null);
-        setError(incoming.error || "No confident movie or TV match was found.");
-      }
-    }
-
-    clearTelegramSceneResult();
-  }, [telegramSceneResult, clearTelegramSceneResult, stopPolling]);
 
   useEffect(() => {
     if (!searching) {
