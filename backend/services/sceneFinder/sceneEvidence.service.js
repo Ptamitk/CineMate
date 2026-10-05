@@ -52,7 +52,14 @@ const textEvidence = (candidate, text) => {
   const speechExact = exactTitle(text.speech, candidate.title, candidate.originalTitle);
   const stableOcrExact = exactTitle(text.stableOcr, candidate.title, candidate.originalTitle);
   const exact = captionExact || speechExact || stableOcrExact;
-  const independent = [stableOcrScore, speechScore].filter(x => x >= 0.72).length;
+  // One ordinary spoken sentence is not independent title evidence.
+  // OCR repeated across frames is much stronger; speech can corroborate only
+  // when it agrees with OCR, or when the transcript is an exact short title.
+  const speechWords = String(text.speech || "").trim().split(/\s+/).filter(Boolean);
+  const speechCorroborates = speechScore >= 0.72 && stableOcrScore >= 0.45;
+  const shortExactSpeech = speechExact && speechWords.length <= 7;
+  const independent = (stableOcrScore >= 0.72 ? 1 : 0) +
+    (speechCorroborates || shortExactSpeech ? 1 : 0);
 
   return { captionScore, ocrScore, stableOcrScore, speechScore, captionExact, speechExact, stableOcrExact, exact, independent };
 };
