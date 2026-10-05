@@ -497,7 +497,7 @@ const SceneFinder = () => {
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">{title}</span>
                   <span className="text-[10px] text-white/15">0{index + 1}</span>
-            </motion.div>
+                 </div>
                 <p className="mt-2 text-xs leading-5 text-white/30">{text}</p>
               </div>
             ))}
