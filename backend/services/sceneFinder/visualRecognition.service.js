@@ -117,12 +117,10 @@ const extractImageEmbeddings = async (
   const model =
     await loadImageEmbeddingModel();
 
-  const output = await model(
-    images,
-    {
-      pool: true,
-    }
-  );
+  // CLIP's Transformers.js image-feature pipeline already returns
+  // the 512-dimensional image embedding. Passing pool:true makes the
+  // runtime look for a pooler layer that CLIP does not expose.
+  const output = await model(images);
 
   return tensorToVectors(
     output,
