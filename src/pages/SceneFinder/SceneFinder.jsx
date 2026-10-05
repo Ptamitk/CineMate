@@ -48,6 +48,7 @@ const normalizeResult = (result) => ({
   rating: result?.rating || "—",
   confidence: typeof result?.confidence === "number" ? result.confidence : null,
   image: result?.image || "",
+  accepted: result?.accepted === true,
   evidenceType: result?.evidenceType || "",
   sceneScore: typeof result?.sceneScore === "number" ? result.sceneScore : null,
   seasonNumber: result?.seasonNumber ?? null,
@@ -130,8 +131,10 @@ const SceneFinder = () => {
         setSearching(false);
         setJobId(null);
 
-        if (job.result?.title) {
-          setResult(normalizeResult(job.result));
+        const normalized = normalizeResult(job.result);
+
+        if (normalized.accepted && normalized.contentId && normalized.title && normalized.confidence !== null) {
+          setResult(normalized);
           setError("");
         } else {
           setResult(null);
