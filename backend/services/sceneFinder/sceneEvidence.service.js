@@ -279,7 +279,7 @@ const analyzeSceneEvidence = async ({
         best.sceneScore >= 0.63 &&
         margin >= 0.045 &&
         (
-          best.evidence.artworkMatchedFrames >= 2 ||
+          best.evidence.artworkMatchedFrames >= 2 ||\n          best.evidence.episodeArtworkMatchedFrames >= 2 ||
           best.evidence.ocrScore >= 0.72 ||
           best.evidence.speechScore >= 0.72
         )
@@ -294,7 +294,7 @@ const analyzeSceneEvidence = async ({
     artworkSimilarityMatches,
     caption,
     queries: candidateResult?.queries || [],
-    candidates: scored,
+    candidates: scored,\n    artworkSimilarityMatches,\n    episodeSimilarityMatches,
     bestMatch: accepted ? best : null,
   };
 };
