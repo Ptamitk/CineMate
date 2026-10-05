@@ -559,6 +559,10 @@ const processSceneFinderJob = async (
                   : null,
               evidenceType:
                 bestMatch.evidenceType || "",
+              episode:
+                bestMatch.episode || null,
+              evidence:
+                bestMatch.evidence || null,
             },
             error: "",
           },
