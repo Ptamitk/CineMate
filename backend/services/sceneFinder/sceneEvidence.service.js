@@ -86,6 +86,10 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     .filter(item => item.exact)
     .map(item => item.candidate);
 
+  const fastArtworkCandidates = fastCandidates.filter(candidate =>
+    exactFast.some(exact => exact.contentId === candidate.contentId && exact.contentType === candidate.contentType)
+  );
+
   if (exactFast.length === 1 && fastCandidates.length <= 20) {
     const candidate = exactFast[0];
     const result = {
