@@ -1,64 +1,65 @@
 const { runFFmpeg } = require("./ffmpeg.service");
 
-const parseFfmpegMetadata = (rawText = "") => {
-  const text = String(rawText || "");
+const DIALOGUE_PATTERNS = [
+  /\b(?:what's wrong|what are you|who are you|where are you|why are you|how are you|i don't know|i've seen|what do you|you know|come on|please stop|look at me)\b/i,
+  /^(?:what|why|who|how|where|when|which|i|you|we|they|he|she|do|did|does|are|is|can|could|would|will|please|look|listen)\b/i,
+];
 
-  const durationMatch = text.match(/Duration:\s*(\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)/i);
-  const videoMatch = text.match(/Stream #0:(\d+)(?:\([^\)]*\))?: Video: ([^,]+),\s*([^,]+),\s*(\d+)x(\d+)(?:,|\s)/i);
-  const audioMatch = text.match(/Stream #0:(\d+)(?:\([^\)]*\))?: Audio: ([^,]+)/i);
-  const frameRateMatch = text.match(/,\s*([0-9.]+)\s*(?:fps|tbr|tb r|tbc)/i);
+const SOCIAL_PATTERNS = [
+  /\b(?:fyp|viral|explore|reels?|instagram|follow|subscribe|share|comment|like|tag)\b/i,
+  /(?:@\w+|#\w+)/,
+];
 
-  const duration = durationMatch
-    ? Number(durationMatch[1]) * 3600 + Number(durationMatch[2]) * 60 + Number(durationMatch[3])
-    : null;
-
-  const width = videoMatch ? Number(videoMatch[4]) : null;
-  const height = videoMatch ? Number(videoMatch[5]) : null;
-  const codec = videoMatch ? videoMatch[2].trim() : null;
-  const fps = frameRateMatch ? Number(frameRateMatch[1]) : null;
-  const hasAudio = Boolean(audioMatch);
-
-  return {
-    duration,
-    width,
-    height,
-    fps,
-    codec,
-    audioPresent: hasAudio,
-    audioCodec: audioMatch ? audioMatch[2].trim() : null,
-    aspectRatio: width && height ? width / height : null,
-    orientation: width && height ? (width >= height ? "landscape" : "portrait") : null,
-    valid: Number.isFinite(duration) && duration > 0 && width > 0 && height > 0,
-  };
+const cleanSignal = (value = "") => {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/[@#][\p{L}\p{N}_-]+/gu, " ")
+    .replace(/\b(?:fyp|viral|explore|reels?|instagram|follow|subscribe|share|comment|like|tag)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 };
 
-const extractVideoMetadata = async (videoPath) => {
-  if (!videoPath) {
-    throw new Error("Video path is required.");
-  }
+const isDialogueLike = (value = "") => {
+  const text = cleanSignal(value);
+  if (!text || text.length > 180) return false;
 
-  const result = await runFFmpeg(["-hide_banner", "-i", videoPath], { allowNonZeroExit: true });
-  const meta = parseFfmpegMetadata(result.stderr || result.stdout || "");
+  const words = text.split(/\s+/).filter(Boolean);
+  if (!words.length) return false;
 
-  if (!meta.valid) {
-    throw new Error("Unsupported or unreadable video file.");
-  }
+  const lower = text.toLowerCase();
+  const dialogueHit = DIALOGUE_PATTERNS.some((pattern) => pattern.test(lower));
+  const startsLikeDialogue = words.length <= 12 && /^(what|why|who|how|where|when|which|i|you|we|they|he|she|do|did|does|are|is|can|could|would|will|please|look|listen)\b/i.test(words[0]);
 
-  return {
-    duration: Number(meta.duration),
-    width: Number(meta.width),
-    height: Number(meta.height),
-    fps: meta.fps ? Number(meta.fps) : null,
-    codec: meta.codec,
-    audioPresent: Boolean(meta.audioPresent),
-    audioCodec: meta.audioCodec,
-    aspectRatio: meta.aspectRatio,
-    orientation: meta.orientation,
-    valid: true,
-  };
+  return dialogueHit || startsLikeDialogue;
+};
+
+const isTitleCandidate = (value = "") => {
+  const text = cleanSignal(value);
+  if (!text || text.length < 4 || text.length > 100) return false;
+
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length < 2 || words.length > 8) return false;
+
+  if (SOCIAL_PATTERNS.some((pattern) => pattern.test(text))) return false;
+  if (isDialogueLike(text)) return false;
+  if (/^(movie|film|show|series|season|episode|trailer|official|watch|story|plot)\b/i.test(text)) return false;
+  if (/\d{1,2}[./-]\d{1,2}[./-]\d{2,4}/.test(text)) return false;
+
+  return true;
+};
+
+const shouldRejectSpeechOnlyMatch = ({ bestMatch, evidence, speechText = "" } = {}) => {
+  if (!bestMatch || !bestMatch.evidenceType) return false;
+
+  const textEvidence = ["text-corroborated", "text-exact"].includes(bestMatch.evidenceType);
+  const weakVisual = Number(evidence?.visualLabelScore || 0) < 0.45 && Number(evidence?.artworkAverage || 0) < 0.45;
+
+  return textEvidence && weakVisual && !!speechText && isDialogueLike(speechText);
 };
 
 module.exports = {
-  parseFfmpegMetadata,
-  extractVideoMetadata,
+  cleanSignal,
+  isDialogueLike,
+  isTitleCandidate,
+  shouldRejectSpeechOnlyMatch,
 };
