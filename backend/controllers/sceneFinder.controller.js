@@ -18,7 +18,7 @@ const analyzeScene = async (req, res) => {
     if (!normalizedReelUrl && !uploadedVideo) {
       return res.status(400).json({
         message:
-          "Instagram Reel URL or video file is required.",
+          "Video file or video URL is required.",
       });
     }
 
