@@ -141,18 +141,18 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
 
   const artworkCandidates = await getCandidateArtwork(
     candidates,
-    Math.min(candidates.length, Math.max(12, Number(process.env.SCENE_FINDER_ARTWORK_CANDIDATES || 28)))
+    Math.min(candidates.length, Math.max(20, Number(process.env.SCENE_FINDER_ARTWORK_CANDIDATES || 48)))
   );
 
   const tvCandidates = candidates.filter(x => x.contentType === "tv");
   const episodeArtwork = await getCandidateEpisodeArtwork(
     tvCandidates,
-    Math.min(tvCandidates.length, Number(process.env.SCENE_FINDER_EPISODE_CANDIDATES || 3))
+    Math.min(tvCandidates.length, Number(process.env.SCENE_FINDER_EPISODE_CANDIDATES || 8))
   );
 
   const artworkFrames = selectUsefulFrames({
     frameFiles: visualFrames,
-    maxFrames: Math.min(10, Number(process.env.SCENE_FINDER_ARTWORK_FRAMES || 10))
+    maxFrames: Math.min(14, Number(process.env.SCENE_FINDER_ARTWORK_FRAMES || 14))
   });
 
   const [artworkSimilarityMatches, episodeSimilarityMatches] = await Promise.all([
@@ -170,7 +170,7 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
       artworkRankedIds.includes(`${candidate.contentType}:${candidate.contentId}`) ||
       candidates.indexOf(candidate) < 16
     )
-    .slice(0, Math.max(8, Math.min(24, Number(process.env.SCENE_FINDER_VISUAL_LABEL_CANDIDATES || 24))));
+    .slice(0, Math.max(8, Math.min(32, Number(process.env.SCENE_FINDER_VISUAL_LABEL_CANDIDATES || 32))));
 
   const visualLabelMatches = await analyzeCandidateVisualLabels({
     frameFiles: artworkFrames,
