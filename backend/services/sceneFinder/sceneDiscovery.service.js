@@ -273,7 +273,14 @@ const discoverSceneCandidates = async ({
             searchTyped(query, "movie", "hi-IN"),
             searchTyped(query, "tv", "hi-IN"),
           ]);
-          return [\n            ...multiEn,\n            ...moviesEn,\n            ...tvEn,\n            ...multiHi,\n            ...moviesHi,\n            ...tvHi,\n          ];
+          return [
+            ...multiEn,
+            ...moviesEn,
+            ...tvEn,
+            ...multiHi,
+            ...moviesHi,
+            ...tvHi,
+          ];
         } catch (error) {
           console.error(`Scene search failed for "${query}":`, error.message);
           return [];
