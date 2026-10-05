@@ -15,13 +15,13 @@ const aggregate = (matches, candidate) => {
 
   const scores = rows.map(x => Number(x.imageSimilarity || 0)).sort((a, b) => b - a);
   const strong = rows.filter(x => Number(x.imageSimilarity || 0) >= 0.72);
+
   return {
     average: scores.slice(0, 3).reduce((a, b) => a + b, 0) / Math.min(3, scores.length),
     max: scores[0] || 0,
     matchedFrames: Math.max(0, ...strong.map(x => Number(x.imageFramesMatched || 0))),
     temporalConsistency: Math.max(0, ...rows.map(x => Number(x.temporalConsistency || 0))),
-    bestEpisode: rows
-      .filter(x => x.seasonNumber)
+    bestEpisode: rows.filter(x => x.seasonNumber)
       .sort((a, b) => Number(b.imageSimilarity || 0) - Number(a.imageSimilarity || 0))[0] || null
   };
 };
@@ -44,26 +44,13 @@ const textEvidence = (candidate, text) => {
   const ocrScore = overlapScore(text.ocr, candidate.title, candidate.originalTitle);
   const stableOcrScore = overlapScore(text.stableOcr, candidate.title, candidate.originalTitle);
   const speechScore = overlapScore(text.speech, candidate.title, candidate.originalTitle);
-
   const captionExact = exactTitle(text.caption, candidate.title, candidate.originalTitle);
   const speechExact = exactTitle(text.speech, candidate.title, candidate.originalTitle);
   const stableOcrExact = exactTitle(text.stableOcr, candidate.title, candidate.originalTitle);
-
-  // A single noisy OCR frame must never become "exact title" evidence.
   const exact = captionExact || speechExact || stableOcrExact;
   const independent = [stableOcrScore, speechScore].filter(x => x >= 0.72).length;
 
-  return {
-    captionScore,
-    ocrScore,
-    stableOcrScore,
-    speechScore,
-    captionExact,
-    speechExact,
-    stableOcrExact,
-    exact,
-    independent
-  };
+  return { captionScore, ocrScore, stableOcrScore, speechScore, captionExact, speechExact, stableOcrExact, exact, independent };
 };
 
 const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audioPath = null, caption = "" }) => {
@@ -80,7 +67,7 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
 
   const visualFrames = selectUsefulFrames({
     frameFiles,
-    maxFrames: Math.max(12, Math.min(24, Number(process.env.SCENE_FINDER_VISUAL_FRAMES || 20)))
+    maxFrames: Math.max(10, Math.min(16, Number(process.env.SCENE_FINDER_VISUAL_FRAMES || 12)))
   });
 
   const candidateResult = await discoverSceneCandidates({
@@ -88,6 +75,7 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     ocrText: text.stableOcr || text.ocr,
     speechText: text.speech
   });
+
   const candidates = candidateResult?.candidates || [];
 
   if (!candidates.length || !visualFrames.length) {
@@ -99,18 +87,18 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
 
   const artworkCandidates = await getCandidateArtwork(
     candidates,
-    Math.min(candidates.length, Math.max(16, Number(process.env.SCENE_FINDER_ARTWORK_CANDIDATES || 48)))
+    Math.min(candidates.length, Math.max(12, Number(process.env.SCENE_FINDER_ARTWORK_CANDIDATES || 28)))
   );
 
   const tvCandidates = candidates.filter(x => x.contentType === "tv");
   const episodeArtwork = await getCandidateEpisodeArtwork(
     tvCandidates,
-    Math.min(tvCandidates.length, Number(process.env.SCENE_FINDER_EPISODE_CANDIDATES || 6))
+    Math.min(tvCandidates.length, Number(process.env.SCENE_FINDER_EPISODE_CANDIDATES || 3))
   );
 
   const artworkFrames = selectUsefulFrames({
     frameFiles: visualFrames,
-    maxFrames: Math.min(16, Number(process.env.SCENE_FINDER_ARTWORK_FRAMES || 14))
+    maxFrames: Math.min(10, Number(process.env.SCENE_FINDER_ARTWORK_FRAMES || 10))
   });
 
   const [artworkSimilarityMatches, episodeSimilarityMatches] = await Promise.all([
@@ -118,19 +106,17 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     analyzeArtworkSimilarity({ frameFiles: artworkFrames, candidateArtwork: episodeArtwork })
   ]);
 
-  // CLIP artwork similarity tells us which titles are visually plausible.
-  // Candidate-conditioned zero-shot CLIP then performs the actual title-vs-title discrimination.
   const artworkRankedIds = [...artworkSimilarityMatches]
     .sort((a, b) => Number(b.imageSimilarity || 0) - Number(a.imageSimilarity || 0))
-    .slice(0, 16)
+    .slice(0, 12)
     .map(x => `${x.contentType}:${x.contentId}`);
 
   const visualLabelCandidates = candidates
     .filter(candidate =>
       artworkRankedIds.includes(`${candidate.contentType}:${candidate.contentId}`) ||
-      candidates.indexOf(candidate) < 16
+      candidates.indexOf(candidate) < 10
     )
-    .slice(0, Math.max(8, Math.min(24, Number(process.env.SCENE_FINDER_VISUAL_LABEL_CANDIDATES || 20))));
+    .slice(0, Math.max(6, Math.min(14, Number(process.env.SCENE_FINDER_VISUAL_LABEL_CANDIDATES || 12))));
 
   const visualLabelMatches = await analyzeCandidateVisualLabels({
     frameFiles: artworkFrames,
@@ -168,8 +154,6 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
       (ep.average >= 0.60 && ep.matchedFrames >= 2);
 
     const textCorroborated = t.exact || t.independent >= 1;
-
-    // When no reliable text exists, visual discrimination carries most of the weight.
     let score = textScore * 0.25 + visualScore * 0.75;
 
     if (!textCorroborated && !visualCorroborated) score = Math.min(score, 0.54);
@@ -216,18 +200,13 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
   const best = scored[0] || null;
   const second = scored[1] || null;
   const margin = best && second ? best.sceneScore - second.sceneScore : 0;
-
   const accepted = Boolean(best) && (
     (best.sceneScore >= 0.72 && margin >= 0.07) ||
     (best.evidenceType === "text-exact" && best.sceneScore >= 0.92 && margin >= 0.035)
   );
 
   console.log("Scene Finder production ranking:", scored.slice(0, 8).map(x => ({
-    title: x.title,
-    score: x.sceneScore,
-    evidenceType: x.evidenceType,
-    episode: x.episode,
-    evidence: x.evidence
+    title: x.title, score: x.sceneScore, evidenceType: x.evidenceType, episode: x.episode, evidence: x.evidence
   })));
 
   return {
