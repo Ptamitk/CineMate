@@ -109,10 +109,10 @@ const dedupe = (items) => {
   return [...map.values()];
 };
 
-const searchMulti = async (query) => {
+const searchMulti = async (query, language = "en-US") => {
   const data = await request("/search/multi", {
     query,
-    language: "en-US",
+    language,
     include_adult: false,
     page: 1,
   });
@@ -123,7 +123,7 @@ const searchMulti = async (query) => {
     .filter(Boolean);
 };
 
-const searchTyped = async (query, type) => {
+const searchTyped = async (query, type, language = "en-US") => {
   const endpoint = type === "tv" ? "/search/tv" : "/search/movie";
   const data = await request(endpoint, {
     query,
@@ -265,12 +265,15 @@ const discoverSceneCandidates = async ({
     const results = await Promise.all(
       batch.map(async (query) => {
         try {
-          const [multi, movies, tv] = await Promise.all([
-            searchMulti(query),
-            searchTyped(query, "movie"),
-            searchTyped(query, "tv"),
+          const [multiEn, moviesEn, tvEn, multiHi, moviesHi, tvHi] = await Promise.all([
+            searchMulti(query, "en-US"),
+            searchTyped(query, "movie", "en-US"),
+            searchTyped(query, "tv", "en-US"),
+            searchMulti(query, "hi-IN"),
+            searchTyped(query, "movie", "hi-IN"),
+            searchTyped(query, "tv", "hi-IN"),
           ]);
-          return [...multi, ...movies, ...tv];
+          return [\n            ...multiEn,\n            ...moviesEn,\n            ...tvEn,\n            ...multiHi,\n            ...moviesHi,\n            ...tvHi,\n          ];
         } catch (error) {
           console.error(`Scene search failed for "${query}":`, error.message);
           return [];
