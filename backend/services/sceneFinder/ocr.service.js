@@ -41,54 +41,65 @@ const extractTextFromImage = async (imagePath) => {
     throw new Error("Image path is required for OCR.");
   }
 
-  const modes = String(
-    process.env.SCENE_FINDER_OCR_PSM_MODES || "6,11"
+  // PSM 11 is substantially cheaper for subtitle/title-card style text.
+  // Only run the heavier PSM 6 fallback when the first pass found little
+  // or low-confidence text.
+  const configuredModes = String(
+    process.env.SCENE_FINDER_OCR_PSM_MODES || "11,6"
   )
     .split(",")
     .map((value) => Number(value.trim()))
     .filter((value) => Number.isFinite(value));
 
-  const timeoutMs = OCR_TIMEOUT_MS * Math.max(1, modes.length);
+  const modes = configuredModes.length ? configuredModes : [11, 6];
+  const firstMode = modes[0];
+  const fallbackMode = modes[1];
+
+  const timeoutMs = Math.max(
+    8 * 1000,
+    Number(process.env.SCENE_FINDER_OCR_TIMEOUT_MS || 45 * 1000)
+  );
 
   const result = await Promise.race([
     (async () => {
-      const passes = [];
+      let first = null;
 
-      for (const mode of modes) {
-        try {
-          passes.push(await runOcr(imagePath, mode));
-        } catch (error) {
-          console.error(
-            `OCR pass PSM ${mode} failed:`,
-            error.message
-          );
-        }
+      try {
+        first = await runOcr(imagePath, firstMode);
+      } catch (error) {
+        console.error(
+          `OCR pass PSM ${firstMode} failed:`,
+          error.message
+        );
       }
 
-      const uniqueText = [];
-      const seen = new Set();
+      const usefulFirst =
+        first &&
+        first.text &&
+        first.text.length >= 4 &&
+        Number(first.confidence || 0) >= 35;
 
-      for (const pass of passes) {
-        const normalized = clean(pass.text).toLowerCase();
-        if (normalized && !seen.has(normalized)) {
-          seen.add(normalized);
-          uniqueText.push(pass.text);
-        }
+      if (usefulFirst || !fallbackMode) {
+        return first || { text: "", confidence: 0 };
       }
 
-      return {
-        text: uniqueText.join(" "),
-        confidence:
-          passes.length > 0
-            ? Math.max(...passes.map((pass) => pass.confidence))
-            : 0,
-      };
+      try {
+        const fallback = await runOcr(imagePath, fallbackMode);
+        const firstConfidence = Number(first?.confidence || 0);
+        const fallbackConfidence = Number(fallback?.confidence || 0);
+
+        return fallbackConfidence > firstConfidence ? fallback : first;
+      } catch (error) {
+        console.error(
+          `OCR fallback PSM ${fallbackMode} failed:`,
+          error.message
+        );
+        return first || { text: "", confidence: 0 };
+      }
     })(),
     new Promise((_, reject) => {
       setTimeout(
-        () => reject(
-          new Error(`OCR timed out after ${timeoutMs} ms.`)
-        ),
+        () => reject(new Error(`OCR timed out after ${timeoutMs} ms.`)),
         timeoutMs
       );
     }),
@@ -96,7 +107,6 @@ const extractTextFromImage = async (imagePath) => {
 
   return result;
 };
-
 module.exports = {
   extractTextFromImage,
 };
