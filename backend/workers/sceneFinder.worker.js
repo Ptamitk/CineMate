@@ -550,6 +550,7 @@ const processSceneFinderJob = async (
                   : "",
               image:
                 bestMatch.image || "",
+              accepted: true,
               confidence:
                 bestMatch.confidence ||
                 null,
