@@ -73,6 +73,9 @@ const SceneFinder = () => {
 
   const fileRef = useRef(null);
   const pollRef = useRef(null);
+  // Each analysis gets a unique run token. This prevents an older in-flight
+  // poll response from overwriting the result of a newer analysis.
+  const analysisRunRef = useRef(0);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -94,7 +97,9 @@ const SceneFinder = () => {
     return () => clearInterval(timer);
   }, [searching]);
 
-  const pollStatus = useCallback(async (id, token) => {
+  const pollStatus = useCallback(async (id, token, runToken) => {
+    if (runToken !== analysisRunRef.current) return;
+
     try {
       const response = await fetch(
         `${API_BASE_URL}/api/scene-finder/status/${id}`,
@@ -111,6 +116,10 @@ const SceneFinder = () => {
         }
         throw new Error(data.message || "Unable to read Scene Finder status.");
       }
+
+      // Ignore responses from an older job/run even if that request was
+      // already in flight when the user started a new analysis.
+      if (runToken !== analysisRunRef.current) return;
 
       const job = data.job;
       if (!job) throw new Error("Invalid Scene Finder response.");
@@ -148,11 +157,12 @@ const SceneFinder = () => {
     }
   }, [stopPolling]);
 
-  const startPolling = useCallback((id, token) => {
+  const startPolling = useCallback((id, token, runToken = analysisRunRef.current) => {
     stopPolling();
 
     const tick = async () => {
-      await pollStatus(id, token);
+      if (runToken !== analysisRunRef.current) return;
+      await pollStatus(id, token, runToken);
       if (pollRef.current) pollRef.current = setTimeout(tick, 2500);
     };
 
@@ -164,9 +174,10 @@ const SceneFinder = () => {
     const token = getAuthToken();
 
     if (storedJob && token) {
+      const runToken = ++analysisRunRef.current;
       setJobId(storedJob);
       setSearching(true);
-      startPolling(storedJob, token);
+      startPolling(storedJob, token, runToken);
     }
 
     return () => stopPolling();
@@ -206,6 +217,8 @@ const SceneFinder = () => {
       return;
     }
 
+    // Invalidate every older polling request before starting this analysis.
+    const runToken = ++analysisRunRef.current;
     stopPolling();
     setSearching(true);
     setStep(0);
@@ -234,7 +247,7 @@ const SceneFinder = () => {
 
       setJobId(id);
       localStorage.setItem("cinemate_scene_finder_job", id);
-      startPolling(id, token);
+      startPolling(id, token, runToken);
     } catch (e) {
       stopPolling();
       setSearching(false);
