@@ -13,8 +13,8 @@ const MAX_VIDEO_DURATION_SECONDS = Math.max(
 const extractFrames = async ({
   videoPath,
   intervalSeconds = 1.5,
-  maxFrames = 40,
-  ocrFrameCount = 16,
+  maxFrames = 60,
+  ocrFrameCount = 24,
 }) => {
   if (!videoPath || !fs.existsSync(videoPath)) {
     throw new Error("Video file was not found.");
@@ -48,7 +48,7 @@ const extractFrames = async ({
     );
 
     console.log(
-      `Scene Finder V2: duration=${duration.toFixed(2)}s frames=${targetFrames} interval=${effectiveInterval.toFixed(2)}s`
+      `Scene Finder V4: duration=${duration.toFixed(2)}s frames=${targetFrames} interval=${effectiveInterval.toFixed(2)}s`
     );
 
     const outputPattern = path.join(
