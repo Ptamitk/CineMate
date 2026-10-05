@@ -168,9 +168,9 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
   const visualLabelCandidates = candidates
     .filter(candidate =>
       artworkRankedIds.includes(`${candidate.contentType}:${candidate.contentId}`) ||
-      candidates.indexOf(candidate) < 10
+      candidates.indexOf(candidate) < 16
     )
-    .slice(0, Math.max(6, Math.min(14, Number(process.env.SCENE_FINDER_VISUAL_LABEL_CANDIDATES || 12))));
+    .slice(0, Math.max(8, Math.min(24, Number(process.env.SCENE_FINDER_VISUAL_LABEL_CANDIDATES || 24))));
 
   const visualLabelMatches = await analyzeCandidateVisualLabels({
     frameFiles: artworkFrames,
@@ -203,7 +203,10 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     );
 
     const visualCorroborated =
-      (label.visualLabelScore >= 0.58 && label.visualLabelMatchedFrames >= 2) ||
+      (label.visualLabelScore >= 0.45 &&
+        label.visualLabelMatchedFrames >= 3 &&
+        label.visualLabelTemporalConsistency >= 0.25 &&
+        label.visualLabelMargin >= 0.08) ||
       (art.average >= 0.60 && art.matchedFrames >= 2) ||
       (ep.average >= 0.60 && ep.matchedFrames >= 2);
 
@@ -243,6 +246,7 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
         visualLabelMax: Number(label.visualLabelMax.toFixed(4)),
         visualLabelMatchedFrames: label.visualLabelMatchedFrames,
         visualLabelTemporalConsistency: Number(label.visualLabelTemporalConsistency.toFixed(4)),
+        visualLabelMargin: Number((label.visualLabelMargin || 0).toFixed(4)),
         episodeArtworkAverage: Number(ep.average.toFixed(4)),
         episodeArtworkMax: Number(ep.max.toFixed(4)),
         episodeArtworkMatchedFrames: ep.matchedFrames,
