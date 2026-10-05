@@ -1,806 +1,477 @@
-
 import { useCallback, useEffect, useRef, useState } from "react";
-
 import {
   ArrowRight,
+  Bot,
   Camera,
-  Clapperboard,
+  Check,
+  Circle,
   Film,
+  Link2,
   Loader2,
   Search,
+  Send,
   Sparkles,
   Star,
   Tv,
   Upload,
   X,
+  Zap,
 } from "lucide-react";
-
 import { Link } from "react-router-dom";
-
 import { useAuth } from "../../context/AuthContext";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  "http://localhost:5000";
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 
-const analysisSteps = [
-  {
-    icon: Camera,
-    title: "Scanning Scene",
-    text: "Analyzing frames from your video...",
-  },
-  {
-    icon: Search,
-    title: "Reading Scene Details",
-    text: "Looking for titles, text and visual clues...",
-  },
-  {
-    icon: Film,
-    title: "Analyzing Dialogue",
-    text: "Processing audio and dialogue signals...",
-  },
-  {
-    icon: Sparkles,
-    title: "Finding The Match",
-    text: "Searching CineMate for the movie or series...",
-  },
+const steps = [
+  { icon: Camera, title: "Scanning", text: "Sampling the scene across the video." },
+  { icon: Search, title: "Reading clues", text: "Combining OCR, dialogue and metadata." },
+  { icon: Film, title: "Visual match", text: "Comparing scene frames with cinematic artwork." },
+  { icon: Sparkles, title: "Ranking", text: "Cross-checking movie and TV candidates." },
 ];
 
-const SceneFinder = () => {
-  const {
-    telegramSceneResult,
-    clearTelegramSceneResult,
-  } = useAuth();
+const getAuthToken = () => {
+  try {
+    return JSON.parse(localStorage.getItem("cinemate_auth") || "{}")?.token || "";
+  } catch {
+    return "";
+  }
+};
 
-  const [reelUrl, setReelUrl] = useState("");
-  const [videoFile, setVideoFile] = useState(null);
-  const [isSearching, setIsSearching] = useState(false);
+const normalizeResult = (result) => ({
+  contentId: result?.contentId ?? null,
+  type: result?.contentType === "tv" ? "tv" : "movie",
+  title: result?.title || "Scene Identified",
+  year: result?.year || (result?.releaseDate ? String(result.releaseDate).slice(0, 4) : "—"),
+  rating: result?.rating || "—",
+  confidence: typeof result?.confidence === "number" ? result.confidence : null,
+  image: result?.image || "",
+  evidenceType: result?.evidenceType || "",
+  sceneScore: typeof result?.sceneScore === "number" ? result.sceneScore : null,
+});
+
+const SceneFinder = () => {
+  const { telegramSceneResult, clearTelegramSceneResult } = useAuth();
+  const [url, setUrl] = useState("");
+  const [video, setVideo] = useState(null);
+  const [searching, setSearching] = useState(false);
   const [result, setResult] = useState(null);
   const [jobId, setJobId] = useState(null);
   const [error, setError] = useState("");
-  const [analysisStep, setAnalysisStep] = useState(0);
+  const [step, setStep] = useState(0);
+  const [telegram, setTelegram] = useState(null);
+  const [telegramLoading, setTelegramLoading] = useState(true);
+  const [telegramAction, setTelegramAction] = useState(false);
+  const [telegramMessage, setTelegramMessage] = useState("");
 
-  const pollingRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const fileRef = useRef(null);
+  const pollRef = useRef(null);
 
   const stopPolling = useCallback(() => {
-    if (pollingRef.current) {
-      clearTimeout(pollingRef.current);
-      pollingRef.current = null;
+    if (pollRef.current) {
+      clearTimeout(pollRef.current);
+      pollRef.current = null;
     }
   }, []);
 
+  const fetchTelegramStatus = useCallback(async () => {
+    const token = getAuthToken();
+    if (!token) {
+      setTelegramLoading(false);
+      return;
+    }
 
-  /* ================= TELEGRAM SCENE RESULT ================= */
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/telegram-account/status`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Unable to load Telegram status.");
+      setTelegram(data);
+    } catch (e) {
+      setTelegramMessage(e.message || "Unable to load Telegram connection.");
+    } finally {
+      setTelegramLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (!telegramSceneResult) {
-      return;
-    }
+    fetchTelegramStatus();
+    const timer = setInterval(fetchTelegramStatus, 15000);
+    return () => clearInterval(timer);
+  }, [fetchTelegramStatus]);
 
-    /* ================= PROCESSING ================= */
+  useEffect(() => {
+    if (!telegramSceneResult) return;
 
-    if (
-      telegramSceneResult.status ===
-      "processing"
-    ) {
+    const incoming = telegramSceneResult;
+    if (incoming.status === "processing" || incoming.status === "pending") {
       stopPolling();
-
-      setIsSearching(true);
-      setAnalysisStep(0);
-      const telegramJobId =
-        telegramSceneResult.jobId || null;
-
-      setJobId(telegramJobId);
-
-      if (telegramJobId) {
-        localStorage.setItem(
-          "cinemate_scene_finder_job",
-          telegramJobId
-        );
-      }
-
+      setSearching(true);
+      setStep(0);
+      setJobId(incoming.jobId || null);
       setResult(null);
       setError("");
-
-      clearTelegramSceneResult();
-
-      return;
-    }
-
-    /* ================= FINAL RESULT ================= */
-
-    const sceneResult =
-      telegramSceneResult.result;
-
-    stopPolling();
-
-    setIsSearching(false);
-
-    setJobId(
-      telegramSceneResult.jobId || null
-    );
-
-    if (telegramSceneResult.jobId) {
-      localStorage.removeItem(
-        "cinemate_scene_finder_job"
-      );
-    }
-
-    setError(
-      telegramSceneResult.error || ""
-    );
-
-    if (
-      telegramSceneResult.status ===
-        "completed" &&
-      sceneResult?.title
-    ) {
-      setResult({
-        contentId:
-          sceneResult.contentId,
-
-        type:
-          sceneResult.contentType === "tv"
-            ? "tv"
-            : "movie",
-
-        title:
-          sceneResult.title ||
-          "Scene Identified",
-
-        year:
-          sceneResult.year ||
-          (sceneResult.releaseDate
-            ? String(sceneResult.releaseDate).slice(0, 4)
-            : "—"),
-
-        rating:
-          sceneResult.rating || "—",
-
-        confidence:
-          typeof sceneResult.confidence ===
-          "number"
-            ? sceneResult.confidence
-            : null,
-
-        description:
-          "CineMate successfully identified the scene from Telegram.",
-
-        image:
-          sceneResult.image || "",
-
-        evidenceType:
-          sceneResult.evidenceType || "",
-
-        sceneScore:
-          typeof sceneResult.sceneScore === "number"
-            ? sceneResult.sceneScore
-            : null,
-      });
-    } else if (
-      telegramSceneResult.status ===
-      "completed"
-    ) {
-      setResult(null);
-
-      setError(
-        telegramSceneResult.error ||
-          "No confident scene match was found."
-      );
-    } else if (
-      telegramSceneResult.status ===
-      "failed"
-    ) {
-      setResult(null);
-
-      setError(
-        telegramSceneResult.error ||
-          "Scene analysis failed. Please try again."
-      );
+    } else {
+      stopPolling();
+      setSearching(false);
+      setJobId(incoming.jobId || null);
+      if (incoming.status === "completed" && incoming.result?.title) {
+        setResult(normalizeResult(incoming.result));
+        setError("");
+      } else {
+        setResult(null);
+        setError(incoming.error || "No confident movie or TV match was found.");
+      }
     }
 
     clearTelegramSceneResult();
-  }, [
-    telegramSceneResult,
-    clearTelegramSceneResult,
-    stopPolling,
-  ]);
-
-  /* ================= ANALYSIS STEP ANIMATION ================= */
+  }, [telegramSceneResult, clearTelegramSceneResult, stopPolling]);
 
   useEffect(() => {
-    if (!isSearching) {
-      setAnalysisStep(0);
+    if (!searching) {
+      setStep(0);
       return;
     }
 
-    const stepInterval = setInterval(() => {
-      setAnalysisStep((currentStep) => {
-        if (
-          currentStep >=
-          analysisSteps.length - 1
-        ) {
-          return 0;
-        }
+    const timer = setInterval(() => {
+      setStep((value) => (value + 1) % steps.length);
+    }, 2200);
 
-        return currentStep + 1;
-      });
-    }, 2500);
+    return () => clearInterval(timer);
+  }, [searching]);
 
-    return () => {
-      clearInterval(stepInterval);
-    };
-  }, [isSearching]);
-
-  const handleVideoChange = (event) => {
-    const file =
-      event.target.files?.[0];
-
-    if (!file) {
-      return;
-    }
-
-    if (!file.type.startsWith("video/")) {
-      setError(
-        "Please select a valid video file."
-      );
-      return;
-    }
-
-    if (file.size > 100 * 1024 * 1024) {
-      setError(
-        "Video file must be smaller than 100 MB."
-      );
-      return;
-    }
-
-    setVideoFile(file);
-    setReelUrl("");
-    setError("");
-    setResult(null);
-  };
-
-  const removeVideo = () => {
-    setVideoFile(null);
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
-
-  const checkJobStatus = useCallback(async (
-    currentJobId,
-    token
-  ) => {
+  const pollStatus = useCallback(async (id, token) => {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/scene-finder/status/${currentJobId}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+        `${API_BASE_URL}/api/scene-finder/status/${id}`,
+        { headers: { Authorization: `Bearer ${token}` } }
       );
-
-      const data =
-        await response.json();
+      const data = await response.json();
 
       if (!response.ok) {
-        if (
-          response.status === 401 ||
-          response.status === 403
-        ) {
+        if (response.status === 401 || response.status === 403) {
           stopPolling();
-          localStorage.removeItem(
-            "cinemate_scene_finder_job"
-          );
-          setIsSearching(false);
-          setJobId(null);
-          setError(
-            "Your session has expired. Please login again."
-          );
+          setSearching(false);
+          setError("Your session has expired. Please login again.");
           return;
         }
-
-        if (response.status === 404) {
-          stopPolling();
-          localStorage.removeItem(
-            "cinemate_scene_finder_job"
-          );
-          setIsSearching(false);
-          setJobId(null);
-          setError(
-            data.message ||
-              "This Scene Finder job is no longer available."
-          );
-          return;
-        }
-
-        throw new Error(
-          data.message ||
-            "Failed to fetch scene analysis status."
-        );
+        throw new Error(data.message || "Unable to read Scene Finder status.");
       }
 
       const job = data.job;
-
-      if (!job) {
-        throw new Error(
-          "Invalid response from Scene Finder."
-        );
-      }
+      if (!job) throw new Error("Invalid Scene Finder response.");
 
       if (job.status === "completed") {
         stopPolling();
-        localStorage.removeItem(
-          "cinemate_scene_finder_job"
-        );
-
-        setIsSearching(false);
+        localStorage.removeItem("cinemate_scene_finder_job");
+        setSearching(false);
         setJobId(null);
 
-        if (!job.result?.title) {
+        if (job.result?.title) {
+          setResult(normalizeResult(job.result));
+          setError("");
+        } else {
           setResult(null);
-          setError(
-            job.error ||
-              "No confident scene match was found."
-          );
-
-          return;
+          setError(job.error || "No confident movie or TV match was found.");
         }
-
-        setResult({
-          contentId:
-            job.result?.contentId,
-
-          type:
-            job.result?.contentType === "tv"
-              ? "tv"
-              : "movie",
-
-          title:
-            job.result?.title ||
-            "Scene Identified",
-
-          year:
-            job.result?.year ||
-            (job.result?.releaseDate
-              ? String(job.result.releaseDate).slice(0, 4)
-              : "—"),
-
-          rating:
-            job.result?.rating || "—",
-
-          confidence:
-            typeof job.result?.confidence ===
-            "number"
-              ? job.result.confidence
-              : null,
-
-          description:
-            "CineMate successfully identified the scene.",
-
-          image:
-            job.result?.image || "",
-
-          evidenceType:
-            job.result?.evidenceType || "",
-
-          sceneScore:
-            typeof job.result?.sceneScore === "number"
-              ? job.result.sceneScore
-              : null,
-        });
-
         return;
       }
 
       if (job.status === "failed") {
         stopPolling();
-        localStorage.removeItem(
-          "cinemate_scene_finder_job"
-        );
-
-        setIsSearching(false);
-
-        setError(
-          job.error ||
-            "Scene analysis failed. Please try again."
-        );
-        setResult(null);
+        localStorage.removeItem("cinemate_scene_finder_job");
+        setSearching(false);
         setJobId(null);
-
+        setResult(null);
+        setError(job.error || "Scene analysis failed. Please try again.");
         return;
       }
 
-      setIsSearching(true);
-    } catch (error) {
-      console.error(
-        "Scene Finder Status Error:",
-        error
-      );
-
-      /*
-       * A temporary network/server error must not
-       * kill an active Scene Finder job.
-       * The next polling attempt will retry it.
-       */
-      setIsSearching(true);
+      setSearching(true);
+    } catch (e) {
+      console.error("Scene Finder polling error:", e);
+      setSearching(true);
     }
   }, [stopPolling]);
 
-  const startPolling = useCallback((
-    currentJobId,
-    token
-  ) => {
+  const startPolling = useCallback((id, token) => {
     stopPolling();
 
-    const poll = async () => {
-      await checkJobStatus(
-        currentJobId,
-        token
-      );
-
-      if (pollingRef.current) {
-        pollingRef.current =
-          setTimeout(
-            poll,
-            3000
-          );
-      }
+    const tick = async () => {
+      await pollStatus(id, token);
+      if (pollRef.current) pollRef.current = setTimeout(tick, 2500);
     };
 
-    pollingRef.current =
-      setTimeout(
-        poll,
-        0
-      );
-  }, [checkJobStatus, stopPolling]);
+    pollRef.current = setTimeout(tick, 0);
+  }, [pollStatus, stopPolling]);
 
   useEffect(() => {
-    const storedJobId = localStorage.getItem(
-      "cinemate_scene_finder_job"
-    );
+    const storedJob = localStorage.getItem("cinemate_scene_finder_job");
+    const token = getAuthToken();
 
-    const storedAuth = localStorage.getItem(
-      "cinemate_auth"
-    );
-
-    let parsedAuth = null;
-
-    try {
-      parsedAuth = storedAuth
-        ? JSON.parse(storedAuth)
-        : null;
-    } catch {
-      // Invalid persisted auth should simply skip job recovery.
+    if (storedJob && token) {
+      setJobId(storedJob);
+      setSearching(true);
+      startPolling(storedJob, token);
     }
 
-    if (
-      storedJobId &&
-      parsedAuth?.token
-    ) {
-      setJobId(storedJobId);
-      setIsSearching(true);
-      startPolling(
-        storedJobId,
-        parsedAuth.token
-      );
-    }
-
-    return () => {
-      stopPolling();
-    };
+    return () => stopPolling();
   }, [startPolling, stopPolling]);
 
-  const handleIdentifyScene = async (
-    event
-  ) => {
+  const selectVideo = (file) => {
+    if (!file) return;
+
+    if (!file.type.startsWith("video/")) {
+      setError("Please select a valid video file.");
+      return;
+    }
+
+    if (file.size > 100 * 1024 * 1024) {
+      setError("Video file must be smaller than 100 MB.");
+      return;
+    }
+
+    setVideo(file);
+    setUrl("");
+    setResult(null);
+    setError("");
+  };
+
+  const submit = async (event) => {
     event.preventDefault();
 
-    const trimmedUrl =
-      reelUrl.trim();
+    const cleanUrl = url.trim();
+    if (!cleanUrl && !video) {
+      setError("Paste a video/Reel URL or upload a scene video.");
+      return;
+    }
 
-    if (!trimmedUrl && !videoFile) {
-      setError(
-        "Paste an Instagram Reel link or upload a video."
-      );
-
+    const token = getAuthToken();
+    if (!token) {
+      setError("Please login before using Scene Finder.");
       return;
     }
 
     stopPolling();
-
-    setIsSearching(true);
-    setAnalysisStep(0);
+    setSearching(true);
+    setStep(0);
     setResult(null);
-    setJobId(null);
     setError("");
 
     try {
-      const storedAuth =
-        localStorage.getItem(
-          "cinemate_auth"
-        );
+      const body = new FormData();
+      if (cleanUrl) body.append("reelUrl", cleanUrl);
+      if (video) body.append("video", video);
 
-      if (!storedAuth) {
-        throw new Error(
-          "Please login before using Scene Finder."
-        );
-      }
-
-      const parsedAuth =
-        JSON.parse(storedAuth);
-
-      const token =
-        parsedAuth?.token;
-
-      if (!token) {
-        throw new Error(
-          "Authentication token not found."
-        );
-      }
-
-      const formData =
-        new FormData();
-
-      if (trimmedUrl) {
-        formData.append(
-          "reelUrl",
-          trimmedUrl
-        );
-      }
-
-      if (videoFile) {
-        formData.append(
-          "video",
-          videoFile
-        );
-      }
-
-      const response =
-        await fetch(
-          `${API_BASE_URL}/api/scene-finder/analyze`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-            body: formData,
-          }
-        );
-
-      const data =
-        await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.message ||
-            "Failed to analyze the scene."
-        );
-      }
-
-      const newJobId =
-        data.job?.id;
-
-      if (!newJobId) {
-        throw new Error(
-          "Scene analysis job ID was not returned."
-        );
-      }
-
-      setJobId(newJobId);
-
-      localStorage.setItem(
-        "cinemate_scene_finder_job",
-        newJobId
+      const response = await fetch(
+        `${API_BASE_URL}/api/scene-finder/analyze`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body,
+        }
       );
 
-      startPolling(
-        newJobId,
-        token
-      );
-    } catch (error) {
-      console.error(
-        "Scene Finder Error:",
-        error
-      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Failed to start analysis.");
 
+      const id = data.job?.id;
+      if (!id) throw new Error("Scene analysis job ID was not returned.");
+
+      setJobId(id);
+      localStorage.setItem("cinemate_scene_finder_job", id);
+      startPolling(id, token);
+    } catch (e) {
       stopPolling();
-
-      setIsSearching(false);
-
-      setError(
-        error.message ||
-          "Something went wrong while analyzing the scene."
-      );
+      setSearching(false);
+      setError(e.message || "Something went wrong while analyzing the scene.");
     }
   };
 
-  const currentAnalysis =
-    analysisSteps[analysisStep];
+  const disconnectTelegram = async () => {
+    const token = getAuthToken();
+    if (!token) return;
 
-  const CurrentIcon =
-    currentAnalysis.icon;
+    setTelegramAction(true);
+    setTelegramMessage("");
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/telegram-account/disconnect`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Unable to disconnect Telegram.");
+      setTelegram(data);
+      setTelegramMessage("Telegram disconnected.");
+    } catch (e) {
+      setTelegramMessage(e.message || "Unable to disconnect Telegram.");
+    } finally {
+      setTelegramAction(false);
+    }
+  };
+
+  const generateCode = async () => {
+    const token = getAuthToken();
+    if (!token) return;
+
+    setTelegramAction(true);
+    setTelegramMessage("");
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/telegram-account/generate-code`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Unable to generate pairing code.");
+
+      setTelegram((current) => ({
+        ...(current || {}),
+        connected: false,
+        pairingCodeActive: true,
+        pairingCodeExpiresAt: data.expiresAt,
+        pairingCode: data.code,
+      }));
+      setTelegramMessage("Code generated. Send it to the CineMate Telegram bot.");
+    } catch (e) {
+      setTelegramMessage(e.message || "Unable to generate pairing code.");
+    } finally {
+      setTelegramAction(false);
+    }
+  };
+
+  const CurrentIcon = steps[step].icon;
 
   return (
-    <main className="min-h-screen bg-[#050505] px-5 pb-20 pt-28 text-white sm:px-8 lg:px-10">
-      <div className="mx-auto max-w-6xl">
+    <main className="min-h-screen bg-[#050505] px-4 pb-24 pt-28 text-white sm:px-8 lg:px-10">
+      <div className="mx-auto max-w-7xl">
+        <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.025] px-5 py-12 shadow-2xl sm:px-8 sm:py-16 lg:px-14">
+          <div className="pointer-events-none absolute -left-40 -top-40 h-96 w-96 rounded-full bg-white/[0.06] blur-[120px]" />
+          <div className="pointer-events-none absolute -bottom-40 -right-20 h-[28rem] w-[28rem] rounded-full bg-white/[0.04] blur-[130px]" />
 
-        {/* ================= HERO ================= */}
+          <div className="relative grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs text-white/55">
+                <Sparkles size={14} />
+                CineMate Scene Finder
+                <span className="ml-1 h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                Deep recognition
+              </div>
 
-        <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.025] px-6 py-16 sm:px-10 sm:py-20 lg:px-16">
+              <h1 className="mt-7 max-w-3xl text-4xl font-semibold leading-[0.98] tracking-tight sm:text-6xl lg:text-7xl">
+                Find the title
+                <span className="block text-white/35">behind any scene.</span>
+              </h1>
 
-          <div className="pointer-events-none absolute -left-32 -top-32 h-72 w-72 rounded-full bg-white/[0.06] blur-[100px]" />
+              <p className="mt-6 max-w-2xl text-sm leading-7 text-white/45 sm:text-base">
+                Upload a clip or paste a public video/Reel URL. CineMate cross-checks
+                on-screen text, dialogue, visual frames and cinematic artwork before
+                returning a confident movie or TV match.
+              </p>
 
-          <div className="pointer-events-none absolute -bottom-40 -right-20 h-96 w-96 rounded-full bg-white/[0.04] blur-[120px]" />
-
-          <div className="relative mx-auto max-w-3xl text-center">
-
-            <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-medium text-white/60 backdrop-blur-xl">
-              <Sparkles size={14} />
-              CineMate Scene Finder
+              <div className="mt-7 flex flex-wrap gap-2 text-[11px] text-white/40">
+                {["Movie", "TV series", "Instagram Reel", "Video URL", "Upload"].map((item) => (
+                  <span key={item} className="rounded-full border border-white/10 bg-black/30 px-3 py-1.5">
+                    {item}
+                  </span>
+                ))}
+              </div>
             </div>
 
-            <h1 className="text-4xl font-semibold leading-[1.05] tracking-tight sm:text-5xl lg:text-7xl">
-              Find the movie
-              <span className="block text-white/40">
-                behind the scene.
-              </span>
-            </h1>
-
-            <p className="mx-auto mt-6 max-w-2xl text-sm leading-7 text-white/45 sm:text-base">
-              Upload a scene video or paste an Instagram
-              Reel link and CineMate will identify the
-              movie or series behind it.
-            </p>
-
-            {/* ================= SEARCH BOX ================= */}
-
-            <form
-              onSubmit={
-                handleIdentifyScene
-              }
-              className="mx-auto mt-10 max-w-2xl"
-            >
-              <div className="rounded-2xl border border-white/10 bg-black/60 p-2 shadow-2xl backdrop-blur-xl">
-
-                <div className="group flex items-center gap-3 px-3">
-
-                  <Camera
-                    size={20}
-                    className="shrink-0 text-white/40 transition-colors duration-300 group-focus-within:text-white"
-                  />
-
+            <form onSubmit={submit} className="rounded-3xl border border-white/10 bg-black/50 p-2 shadow-2xl backdrop-blur-xl">
+              <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-4">
+                <div className="flex items-center gap-3">
+                  <Link2 size={18} className="shrink-0 text-white/35" />
                   <input
-                    type="url"
-                    value={reelUrl}
-                    onChange={(event) => {
-                      setReelUrl(
-                        event.target.value
-                      );
-
-                      if (
-                        event.target.value
-                      ) {
-                        setVideoFile(
-                          null
-                        );
-
-                        if (
-                          fileInputRef.current
-                        ) {
-                          fileInputRef.current.value =
-                            "";
-                        }
+                    value={url}
+                    onChange={(e) => {
+                      setUrl(e.target.value);
+                      if (e.target.value) {
+                        setVideo(null);
+                        if (fileRef.current) fileRef.current.value = "";
                       }
+                      setError("");
                     }}
-                    placeholder="Paste Instagram Reel link..."
-                    aria-label="Instagram Reel URL"
-                    disabled={Boolean(
-                      videoFile
-                    )}
-                    className="w-full min-w-0 bg-transparent py-3 text-sm text-white outline-none placeholder:text-white/25 disabled:opacity-40 sm:text-base"
+                    disabled={Boolean(video) || searching}
+                    placeholder="Paste Instagram Reel or video URL..."
+                    className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none placeholder:text-white/20 sm:text-base"
+                    aria-label="Video or Instagram Reel URL"
                   />
-
-                </div>
-
-                <div className="flex items-center gap-3 px-3 py-2">
-
-                  <div className="h-px flex-1 bg-white/10" />
-
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-white/20">
-                    or
-                  </span>
-
-                  <div className="h-px flex-1 bg-white/10" />
-
-                </div>
-
-                <div className="px-3">
-
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="video/mp4,video/webm,video/quicktime,video/x-matroska"
-                    onChange={
-                      handleVideoChange
-                    }
-                    className="hidden"
-                  />
-
-                  {videoFile ? (
-                    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
-
-                      <div className="flex min-w-0 items-center gap-3">
-
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04]">
-                          <Film size={16} />
-                        </div>
-
-                        <div className="min-w-0 text-left">
-
-                          <p className="truncate text-sm text-white/80">
-                            {videoFile.name}
-                          </p>
-
-                          <p className="mt-0.5 text-[11px] text-white/30">
-                            {(
-                              videoFile.size /
-                              (1024 * 1024)
-                            ).toFixed(1)}{" "}
-                            MB
-                          </p>
-
-                        </div>
-
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={
-                          removeVideo
-                        }
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 text-white/40 transition hover:border-white/20 hover:text-white"
-                        aria-label="Remove video"
-                      >
-                        <X size={15} />
-                      </button>
-
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        fileInputRef.current?.click()
-                      }
-                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-white/40 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.04] hover:text-white/70"
-                    >
-                      <Upload size={17} />
-                      Upload scene video
+                  {url && !searching && (
+                    <button type="button" onClick={() => setUrl("")} className="text-white/30 hover:text-white" aria-label="Clear URL">
+                      <X size={17} />
                     </button>
                   )}
-
                 </div>
+
+                <div className="my-4 flex items-center gap-3">
+                  <span className="h-px flex-1 bg-white/10" />
+                  <span className="text-[10px] uppercase tracking-[0.25em] text-white/20">or</span>
+                  <span className="h-px flex-1 bg-white/10" />
+                </div>
+
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="video/mp4,video/webm,video/quicktime,video/x-matroska"
+                  className="hidden"
+                  onChange={(e) => selectVideo(e.target.files?.[0])}
+                />
+
+                {video ? (
+                  <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black">
+                        <Film size={17} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm text-white/80">{video.name}</p>
+                        <p className="mt-1 text-[11px] text-white/30">
+                          {(video.size / 1024 / 1024).toFixed(1)} MB
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVideo(null);
+                        if (fileRef.current) fileRef.current.value = "";
+                      }}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 text-white/40 hover:text-white"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={searching}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-4 text-sm text-white/45 transition hover:border-white/25 hover:bg-white/[0.04] hover:text-white disabled:opacity-40"
+                  >
+                    <Upload size={17} />
+                    Upload scene video
+                  </button>
+                )}
 
                 <button
                   type="submit"
-                  disabled={
-                    isSearching ||
-                    (!reelUrl.trim() &&
-                      !videoFile)
-                  }
-                  className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-white px-6 text-sm font-semibold text-black transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_10px_35px_rgba(255,255,255,0.18)] disabled:cursor-not-allowed disabled:opacity-40"
+                  disabled={searching || (!url.trim() && !video)}
+                  className="mt-3 flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3.5 text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_15px_45px_rgba(255,255,255,0.16)] disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {isSearching ? (
+                  {searching ? (
                     <>
-                      <Loader2
-                        size={17}
-                        className="animate-spin"
-                      />
-                      Identifying...
+                      <Loader2 size={17} className="animate-spin" />
+                      Analyzing scene...
                     </>
                   ) : (
                     <>
@@ -809,424 +480,235 @@ const SceneFinder = () => {
                     </>
                   )}
                 </button>
-
               </div>
             </form>
+          </div>
 
-            {error && (
-              <p
-                role="alert"
-                aria-live="assertive"
-                className="mx-auto mt-4 max-w-2xl text-sm text-red-400"
-              >
-                {error}
-              </p>
+          {error && (
+            <div className="relative mt-5 rounded-2xl border border-red-400/20 bg-red-400/[0.05] px-4 py-3 text-sm text-red-300">
+              {error}
+            </div>
+          )}
+
+          {searching && (
+            <div className="relative mt-8 rounded-3xl border border-white/10 bg-black/35 p-5 sm:p-6">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
+                  <CurrentIcon size={20} className="animate-pulse" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold">{steps[step].title}</p>
+                      <p className="mt-1 text-xs text-white/35">{steps[step].text}</p>
+                    </div>
+                    {jobId && (
+                      <span className="hidden rounded-full border border-white/10 px-3 py-1 text-[10px] text-white/25 sm:block">
+                        Job {String(jobId).slice(-8)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-4 grid grid-cols-4 gap-1.5">
+                    {steps.map((item, index) => (
+                      <div key={item.title} className={`h-1 rounded-full transition-all duration-500 ${index <= step ? "bg-white" : "bg-white/10"}`} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section className="mt-6 grid gap-6 lg:grid-cols-[1fr_0.8fr]">
+          <div className="rounded-3xl border border-white/10 bg-white/[0.025] p-5 sm:p-7">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.22em] text-white/25">Recognition engine</p>
+                <h2 className="mt-2 text-2xl font-semibold">Built for difficult clips.</h2>
+              </div>
+              <Zap size={20} className="text-white/45" />
+            </div>
+
+            <div className="mt-7 grid gap-3 sm:grid-cols-2">
+              {[
+                ["OCR", "Reads title cards, subtitles and visible text."],
+                ["Dialogue", "Uses speech as an independent clue."],
+                ["Visual", "Compares multiple frames, not one thumbnail."],
+                ["Artwork", "Cross-checks against TMDB movie/TV imagery."],
+              ].map(([title, text]) => (
+                <div key={title} className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                  <div className="flex items-center gap-2">
+                    <Circle size={7} className="fill-white/50 text-white/50" />
+                    <p className="text-sm font-medium">{title}</p>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-white/35">{text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-white/10 bg-white/[0.025] p-5 sm:p-7">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.22em] text-white/25">Telegram</p>
+                <h2 className="mt-2 text-2xl font-semibold">Scene Finder Bot</h2>
+              </div>
+              <div className={`flex h-11 w-11 items-center justify-center rounded-2xl border ${telegram?.connected ? "border-emerald-400/25 bg-emerald-400/[0.06]" : "border-white/10 bg-white/[0.04]"}`}>
+                <Send size={19} className={telegram?.connected ? "text-emerald-300" : "text-white/50"} />
+              </div>
+            </div>
+
+            {telegramLoading ? (
+              <div className="mt-6 flex items-center gap-2 text-xs text-white/35">
+                <Loader2 size={14} className="animate-spin" />
+                Checking Telegram connection...
+              </div>
+            ) : telegram?.connected ? (
+              <div className="mt-6">
+                <div className="rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.04] p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-emerald-200">
+                    <Check size={16} />
+                    Connected
+                  </div>
+                  <div className="mt-4 grid gap-3 text-xs sm:grid-cols-2">
+                    <div>
+                      <p className="text-white/25">Bot</p>
+                      <p className="mt-1 text-white/65">@{telegram.bot?.username || "CineMate"}</p>
+                    </div>
+                    <div>
+                      <p className="text-white/25">Chat ID</p>
+                      <p className="mt-1 truncate font-mono text-white/50">{telegram.chatId || "Connected"}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={disconnectTelegram}
+                  disabled={telegramAction}
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-red-400/15 bg-red-400/[0.03] px-4 py-3 text-xs font-medium text-red-300 transition hover:bg-red-400/[0.07] disabled:opacity-40"
+                >
+                  {telegramAction ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+                  Disconnect Telegram
+                </button>
+              </div>
+            ) : (
+              <div className="mt-6">
+                <p className="text-xs leading-5 text-white/35">
+                  Connect Telegram to send Reel links and searches directly to CineMate.
+                </p>
+
+                {telegram?.pairingCodeActive && telegram.pairingCode && (
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4">
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-white/25">Pairing code</p>
+                    <p className="mt-2 font-mono text-2xl font-bold tracking-[0.18em]">{telegram.pairingCode}</p>
+                    <p className="mt-2 text-[11px] text-white/30">Send /connect {telegram.pairingCode} to the CineMate bot.</p>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={generateCode}
+                  disabled={telegramAction}
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-xs font-semibold text-black disabled:opacity-40"
+                >
+                  {telegramAction ? <Loader2 size={14} className="animate-spin" /> : <Bot size={14} />}
+                  Generate Telegram Code
+                </button>
+              </div>
             )}
 
-            {isSearching &&
-              jobId &&
-              !error && (
-                <p
-                  className="mx-auto mt-4 max-w-2xl text-xs text-white/30"
-                  role="status"
-                  aria-live="polite"
-                >
-                  Scene analysis is being processed...
-                </p>
-              )}
+            {telegramMessage && (
+              <p className="mt-3 text-[11px] text-white/40">{telegramMessage}</p>
+            )}
 
-            <p className="mt-4 text-xs text-white/25">
-              Public Reel links or supported video files up to 100 MB
-            </p>
-
+            {telegram?.bot?.username && (
+              <a
+                href={`https://t.me/${telegram.bot.username}`}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-4 flex items-center justify-center gap-2 rounded-xl border border-white/10 px-4 py-3 text-xs text-white/50 hover:text-white"
+              >
+                <Send size={14} />
+                Open Telegram Bot
+              </a>
+            )}
           </div>
         </section>
 
-        {/* ================= SINGLE ANALYSIS CARD ================= */}
-
-        {isSearching && (
-          <section className="mt-10">
-
-            <div className="relative mx-auto max-w-4xl overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.025] px-7 py-12 sm:px-12 sm:py-16">
-
-              <div className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/[0.045] blur-[100px]" />
-
-              <div className="scene-finder-shimmer pointer-events-none absolute inset-0" />
-
-              <div className="relative text-center">
-
-                <div
-                  key={analysisStep}
-                  className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] shadow-[0_0_60px_rgba(255,255,255,0.06)]"
-                  style={{
-                    animation:
-                      "sceneIconEnter 500ms ease-out",
-                  }}
-                >
-                  <CurrentIcon
-                    size={30}
-                    className="text-white/80"
-                  />
-                </div>
-
-                <p className="mt-7 text-[10px] font-semibold uppercase tracking-[0.3em] text-white/30">
-                  CineMate AI
-                </p>
-
-                <h2
-                  key={`title-${analysisStep}`}
-                  className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl"
-                  style={{
-                    animation:
-                      "sceneTextEnter 500ms ease-out",
-                  }}
-                >
-                  {currentAnalysis.title}
-                </h2>
-
-                <p
-                  key={`text-${analysisStep}`}
-                  className="mx-auto mt-4 max-w-lg text-sm leading-7 text-white/40 sm:text-base"
-                  style={{
-                    animation:
-                      "sceneTextEnter 600ms ease-out",
-                  }}
-                >
-                  {currentAnalysis.text}
-                </p>
-
-                <div className="mt-9 flex items-center justify-center gap-2">
-
-                  {analysisSteps.map(
-                    (_, index) => (
-                      <div
-                        key={index}
-                        className={`h-1 rounded-full transition-all duration-700 ${
-                          index ===
-                          analysisStep
-                            ? "w-10 bg-white/70"
-                            : "w-2 bg-white/15"
-                        }`}
-                      />
-                    )
-                  )}
-
-                </div>
-
-                <div className="mx-auto mt-8 h-px max-w-md overflow-hidden bg-white/[0.06]">
-
-                  <div
-                    className="h-full bg-white/50"
-                    style={{
-                      width: `${
-                        ((analysisStep + 1) /
-                          analysisSteps.length) *
-                        100
-                      }%`,
-                      transition:
-                        "width 800ms ease",
-                    }}
-                  />
-
-                </div>
-
-                <p className="mt-5 text-xs text-white/20">
-                  Please wait while CineMate finds your movie or series.
-                </p>
-
+        {result && (
+          <section className="mt-6 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.025]">
+            <div className="grid lg:grid-cols-[280px_1fr]">
+              <div className="relative min-h-[360px] bg-black">
+                {result.image ? (
+                  <img src={result.image} alt={result.title} className="absolute inset-0 h-full w-full object-cover" />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-white/20">
+                    <Film size={42} />
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />
               </div>
-            </div>
 
-            <style>
-              {`
-                .scene-finder-shimmer {
-                  background:
-                    linear-gradient(
-                      110deg,
-                      transparent 20%,
-                      rgba(255,255,255,0.035) 45%,
-                      rgba(255,255,255,0.06) 50%,
-                      rgba(255,255,255,0.035) 55%,
-                      transparent 80%
-                    );
-                  transform: translateX(-100%);
-                  animation: sceneShimmer 3s ease-in-out infinite;
-                }
-
-                @keyframes sceneShimmer {
-                  0% {
-                    transform: translateX(-100%);
-                  }
-
-                  55%,
-                  100% {
-                    transform: translateX(100%);
-                  }
-                }
-
-                @keyframes sceneIconEnter {
-                  0% {
-                    opacity: 0;
-                    transform: scale(0.75) translateY(10px);
-                  }
-
-                  100% {
-                    opacity: 1;
-                    transform: scale(1) translateY(0);
-                  }
-                }
-
-                @keyframes sceneTextEnter {
-                  0% {
-                    opacity: 0;
-                    transform: translateY(8px);
-                  }
-
-                  100% {
-                    opacity: 1;
-                    transform: translateY(0);
-                  }
-                }
-              `}
-            </style>
-
-          </section>
-        )}
-
-        {/* ================= RESULT ================= */}
-
-        {result && !isSearching && (
-          <section
-            className="mt-10"
-            aria-live="polite"
-          >
-
-            <div className="mb-8">
-
-              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-white/35">
-                Result
-              </p>
-
-              <h2 className="mt-3 text-2xl font-semibold sm:text-3xl">
-                Scene identified
-              </h2>
-
-            </div>
-
-            <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.025]">
-
-              <div className="grid lg:grid-cols-[280px_1fr]">
-
-                <div className="flex aspect-[2/3] items-center justify-center bg-white/[0.03] lg:aspect-auto">
-
-                  {result.image ? (
-                    <img
-                      src={result.image}
-                      alt={result.title}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center gap-3 text-white/20">
-
-                      <Clapperboard size={42} />
-
-                      <span className="text-xs">
-                        Poster will appear here
-                      </span>
-
-                    </div>
-                  )}
-
-                </div>
-
-                <div className="flex flex-col justify-center p-7 sm:p-10">
-
-                  <div className="flex flex-wrap items-center gap-3">
-
-                    <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-white/50">
-
-                      {result.type === "tv" ? (
-                        <span className="flex items-center gap-1.5">
-                          <Tv size={12} />
-                          Series
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1.5">
-                          <Film size={12} />
-                          Movie
-                        </span>
-                      )}
-
-                    </span>
-
-                    <span className="text-sm text-white/35">
-                      {result.year}
-                    </span>
-
-                  </div>
-
-                  <h3 className="mt-5 text-3xl font-semibold sm:text-4xl">
-                    {result.title}
-                  </h3>
-
-                  <div className="mt-4 flex items-center gap-2 text-sm text-white/50">
-
-                    <Star
-                      size={15}
-                      className="fill-white"
-                    />
-
-                    {result.rating}
-
-                  </div>
-
-                  {typeof result.confidence ===
-                    "number" && (
-                    <div className="mt-5 flex flex-wrap items-center gap-3">
-
-                      <span className="text-xs uppercase tracking-wider text-white/30">
-                        Match Confidence
-                      </span>
-
-                      <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/10">
-
-                        <div
-                          className="h-full rounded-full bg-white/70 transition-all duration-700"
-                          style={{
-                            width: `${Math.min(
-                              Math.max(
-                                result.confidence,
-                                0
-                              ),
-                              100
-                            )}%`,
-                          }}
-                        />
-
-                      </div>
-
-                      <span className="text-xs font-semibold text-white/60">
-                        {result.confidence}%
-                      </span>
-
-                    </div>
-                  )}
-
+              <div className="p-6 sm:p-8 lg:p-10">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] text-white/50">
+                    {result.type === "tv" ? "TV Series" : "Movie"}
+                  </span>
                   {result.evidenceType && (
-                    <div className="mt-5 flex flex-wrap items-center gap-3 text-xs">
-                      <span className="uppercase tracking-wider text-white/30">
-                        Evidence
-                      </span>
-                      <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-white/55">
-                        {result.evidenceType.replace(/-/g, " ")}
-                      </span>
-                    </div>
+                    <span className="rounded-full border border-white/10 px-3 py-1.5 text-[10px] text-white/35">
+                      {result.evidenceType.replace(/-/g, " ")}
+                    </span>
                   )}
-
-                  <p className="mt-6 max-w-2xl text-sm leading-7 text-white/45">
-                    {result.description}
-                  </p>
-
-                  {result.contentId && (
-                    <Link
-                      to={
-                        result.type === "tv"
-                          ? `/tv/${result.contentId}`
-                          : `/movie/${result.contentId}`
-                      }
-                      className="mt-8 flex w-fit items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_10px_35px_rgba(255,255,255,0.18)]"
-                    >
-                      View Details
-                      <ArrowRight size={16} />
-                    </Link>
-                  )}
-
                 </div>
 
+                <h2 className="mt-5 text-3xl font-semibold tracking-tight sm:text-4xl">{result.title}</h2>
+
+                <div className="mt-4 flex flex-wrap gap-5 text-sm text-white/40">
+                  <span>{result.year}</span>
+                  {result.rating !== "—" && (
+                    <span className="inline-flex items-center gap-1">
+                      <Star size={14} className="fill-white/50" />
+                      {result.rating}
+                    </span>
+                  )}
+                  {result.confidence !== null && <span>{result.confidence}% confidence</span>}
+                </div>
+
+                <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-white/25">Scene confidence</p>
+                    <p className="mt-2 text-2xl font-semibold">{result.confidence ?? "—"}%</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-white/25">Match score</p>
+                    <p className="mt-2 text-2xl font-semibold">
+                      {result.sceneScore !== null ? Math.round(result.sceneScore * 100) : "—"}%
+                    </p>
+                  </div>
+                </div>
+
+                {result.contentId && (
+                  <Link
+                    to={result.type === "tv" ? `/tv/${result.contentId}` : `/movie/${result.contentId}`}
+                    className="mt-7 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:-translate-y-0.5"
+                  >
+                    Open Full Details
+                    <ArrowRight size={16} />
+                  </Link>
+                )}
               </div>
             </div>
-
           </section>
         )}
 
-        {/* ================= HOW IT WORKS ================= */}
-
-        <section className="mt-20">
-
-          <div className="mb-8">
-
-            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-white/35">
-              How it works
-            </p>
-
-            <h2 className="mt-3 text-2xl font-semibold sm:text-3xl">
-              From scene to movie.
-            </h2>
-
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-3">
-
-            {[
-              {
-                number: "01",
-                icon: Camera,
-                title: "Add Scene",
-                text: "Paste a public Reel link or upload a supported video.",
-              },
-              {
-                number: "02",
-                icon: Search,
-                title: "Identify Scene",
-                text: "CineMate extracts visual text and dialogue signals from the scene.",
-              },
-              {
-                number: "03",
-                icon: Film,
-                title: "Discover",
-                text: "Explore the matching movie or series and its details.",
-              },
-            ].map((item) => {
-              const Icon =
-                item.icon;
-
-              return (
-                <div
-                  key={item.number}
-                  className="group rounded-2xl border border-white/10 bg-white/[0.025] p-6 transition-all duration-500 hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.045]"
-                >
-
-                  <div className="flex items-center justify-between">
-
-                    <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04]">
-                      <Icon size={19} />
-                    </div>
-
-                    <span className="text-xs font-semibold text-white/20">
-                      {item.number}
-                    </span>
-
-                  </div>
-
-                  <h3 className="mt-7 text-lg font-semibold">
-                    {item.title}
-                  </h3>
-
-                  <p className="mt-2 text-sm leading-6 text-white/40">
-                    {item.text}
-                  </p>
-
-                </div>
-              );
-            })}
-
-          </div>
-        </section>
-
+        <div className="mt-6 flex items-center justify-center gap-2 text-[11px] text-white/20">
+          <Tv size={13} />
+          <span>Movie + TV recognition • UI optimized for desktop, tablet and mobile</span>
+        </div>
       </div>
     </main>
   );
 };
 
 export default SceneFinder;
-
