@@ -11,15 +11,23 @@ const cleanText = value => {
   for (const pattern of PROMO_PATTERNS) text = text.replace(pattern," ");
   return normalize(text.replace(SOCIAL_WORDS," "));
 };
-const tokens = value => new Set(cleanText(value).toLowerCase().split(/\s+/).filter(t => t.length >= 2));
+const TITLE_STOPWORDS = new Set([
+  "a","an","the","and","or","of","to","in","on","at","for","from","with",
+  "is","my","your","our","his","her","their","this","that","it","me","you"
+]);
+
+const tokens = value => new Set(
+  cleanText(value).toLowerCase().split(/\s+/)
+    .filter(t => t.length >= 2 && !TITLE_STOPWORDS.has(t))
+);
 const overlapScore = (source,title,originalTitle="") => {
   const sourceTokens=tokens(source); if(!sourceTokens.size)return 0;
   return Math.max(...[title,originalTitle].map(name=>{
     const titleTokens=tokens(name); if(!titleTokens.size)return 0;
     const overlap=[...titleTokens].filter(t=>sourceTokens.has(t)).length;
     const recall=overlap/titleTokens.size, precision=overlap/sourceTokens.size;
-    if(recall===1&&titleTokens.size>=2)return 0.94;
-    if(titleTokens.size===1&&overlap===1&&sourceTokens.size<=4)return 0.86;
+    if (titleTokens.size >= 2 && recall === 1) return 0.94;
+    if (titleTokens.size === 1 && overlap === 1 && sourceTokens.size <= 4) return 0.86;
     return precision*0.35+recall*0.65;
   }));
 };
