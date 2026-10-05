@@ -277,29 +277,41 @@ const SceneFinder = () => {
   return (
     <main className="min-h-screen bg-[#050505] px-4 pb-24 pt-28 text-white sm:px-8 lg:px-10">
       <div className="mx-auto max-w-[1600px]">
-        <motion.section\n          initial={{ opacity: 0, y: 24, scale: 0.985 }}\n          animate={{ opacity: 1, y: 0, scale: 1 }}\n          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}\n          className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.025] px-5 py-12 shadow-2xl sm:px-10 sm:py-16 lg:px-16 lg:py-20">
-          <motion.div\n            aria-hidden="true"\n            animate={{ x: [0, 35, 0], y: [0, 20, 0], scale: [1, 1.08, 1] }}\n            transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}\n            className="pointer-events-none absolute -left-40 -top-40 h-96 w-96 rounded-full bg-white/[0.055] blur-[120px]" />
-          </motion.div>\n          <motion.div\n            aria-hidden="true"\n            animate={{ x: [0, -30, 0], y: [0, -25, 0], scale: [1, 1.06, 1] }}\n            transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}\n            className="pointer-events-none absolute -bottom-40 -right-20 h-[30rem] w-[30rem] rounded-full bg-white/[0.035] blur-[130px]" />
+        <motion.section
+          initial={{ opacity: 0, y: 24, scale: 0.985 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+          className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.025] px-5 py-12 shadow-2xl sm:px-10 sm:py-16 lg:px-16 lg:py-20">
+          <motion.div
+            aria-hidden="true"
+            animate={{ x: [0, 35, 0], y: [0, 20, 0], scale: [1, 1.08, 1] }}
+            transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+            className="pointer-events-none absolute -left-40 -top-40 h-96 w-96 rounded-full bg-white/[0.055] blur-[120px]" />
+          <motion.div
+            aria-hidden="true"
+            animate={{ x: [0, -30, 0], y: [0, -25, 0], scale: [1, 1.06, 1] }}
+            transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
+            className="pointer-events-none absolute -bottom-40 -right-20 h-[30rem] w-[30rem] rounded-full bg-white/[0.035] blur-[130px]" />
 
-          </motion.div>\n\n          <div className="relative mx-auto max-w-5xl text-center">
+          <div className="relative mx-auto max-w-5xl text-center">
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12, duration: 0.5 }} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[10px] uppercase tracking-[0.22em] text-white/45">
               <Sparkles size={13} />
               CineMate Scene Finder
               <span className="ml-1 h-1.5 w-1.5 rounded-full bg-emerald-400" />
             </div>
 
-            <h1 className="mt-7 text-6xl font-semibold leading-[0.95] tracking-[-0.045em] sm:text-7xl lg:text-[5.5rem]">
+            <motion.h1 initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.65 }} className="mt-7 text-6xl font-semibold leading-[0.95] tracking-[-0.045em] sm:text-7xl lg:text-[5.5rem]">
               Find the movie or show
               <span className="block text-white/30">behind any scene.</span>
-            </h1>
+            </motion.h1>
 
-            <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-white/45 sm:text-lg">
+            <motion.p initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.6 }} className="mx-auto mt-6 max-w-2xl text-base leading-8 text-white/45 sm:text-lg">
               Upload a clip or paste a public video/Reel URL. CineMate combines
               visual frames, dialogue, on-screen text and cinematic artwork to find
               the strongest match.
-            </p>
+            </motion.p>
 
-            <div className="mt-7 flex flex-wrap justify-center gap-2">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.42, duration: 0.6 }} className="mt-7 flex flex-wrap justify-center gap-2">
               {["Movies", "TV Shows", "Instagram Reels", "Video URLs"].map((item) => (
                 <span
                   key={item}
@@ -308,9 +320,9 @@ const SceneFinder = () => {
                   {item}
                 </span>
               ))}
-            </div>
+            </motion.div>
 
-            <form
+            <motion.form initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.65 }} whileHover={{ y: -2 }}
               onSubmit={submit}
               className="mx-auto mt-10 max-w-4xl rounded-3xl border border-white/10 bg-black/45 p-2 text-left shadow-[0_30px_100px_rgba(0,0,0,0.45)] backdrop-blur-xl"
             >
@@ -421,7 +433,7 @@ const SceneFinder = () => {
                   )}
                 </button>
               </div>
-            </form>
+            </motion.form>
           </div>
 
           {error && (
@@ -430,8 +442,9 @@ const SceneFinder = () => {
             </div>
           )}
 
+          <AnimatePresence>
           {searching && (
-            <div className="relative mx-auto mt-7 max-w-4xl rounded-3xl border border-white/10 bg-black/30 p-5 sm:p-6">
+            <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.45 }} className="relative mx-auto mt-7 max-w-4xl rounded-3xl border border-white/10 bg-black/30 p-5 sm:p-6">
               <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
                   <CurrentIcon size={19} className="animate-pulse" />
@@ -488,8 +501,9 @@ const SceneFinder = () => {
               </div>
             ))}
           </div>
-        </section>
+        </motion.section>
 
+        <AnimatePresence mode="wait">
         {result && (
           <motion.section initial={{ opacity: 0, y: 28, scale: 0.99 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }} className="mt-6 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.025] shadow-2xl">
             <div className="grid lg:grid-cols-[380px_1fr]">
@@ -572,13 +586,14 @@ const SceneFinder = () => {
                 )}
               </div>
             </div>
-          </section>
+          </motion.section>
         )}
+        </AnimatePresence>
 
-        <div className="mt-7 flex items-center justify-center gap-2 text-[10px] uppercase tracking-[0.18em] text-white/15">
+        <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="mt-7 flex items-center justify-center gap-2 text-[10px] uppercase tracking-[0.18em] text-white/15">
           <CheckCircle2 size={13} />
           Scene Finder · Movie + TV recognition
-        </div>
+        </motion.div>
       </div>
     </main>
   );
