@@ -1,5 +1,5 @@
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
-const IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w780";
+const IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w1280";
 const artworkCache = new Map();
 
 const getHeaders = () => ({
