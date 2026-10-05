@@ -14,7 +14,11 @@ const aggregate = (matches, candidate) => {
   if (!rows.length) return { average: 0, max: 0, matchedFrames: 0, temporalConsistency: 0, bestEpisode: null };
 
   const scores = rows.map(x => Number(x.imageSimilarity || 0)).sort((a, b) => b - a);
-  const strong = rows.filter(x => Number(x.imageSimilarity || 0) >= 0.72);
+  // Artwork similarity is a graded retrieval signal. Do not throw away
+  // useful near-matches before ranking; exact-scene frames often differ from
+  // TMDB stills because of crops, compression, subtitles and color grading.
+  const strongThreshold = candidate.contentType === "tv" ? 0.60 : 0.68;
+  const strong = rows.filter(x => Number(x.imageSimilarity || 0) >= strongThreshold);
 
   return {
     average: scores.slice(0, 3).reduce((a, b) => a + b, 0) / Math.min(3, scores.length),
@@ -229,6 +233,15 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     let score = textScore * 0.25 + visualScore * 0.75;
 
     if (!textCorroborated && !visualCorroborated) score = Math.min(score, 0.54);
+
+    // A strong, repeated artwork retrieval signal is independent evidence even
+    // when the zero-shot title classifier is conservative.
+    const artworkRetrievalCorroborated =
+      (art.matchedFrames >= 2 && art.average >= 0.58 && art.max >= 0.66) ||
+      (ep.matchedFrames >= 2 && ep.average >= 0.58 && ep.max >= 0.64);
+    if (artworkRetrievalCorroborated) {
+      score = Math.max(score, Math.min(0.88, artworkScore * 1.08));
+    }
     if (t.exact) score = Math.max(score, 0.92);
 
     const episode = ep.bestEpisode;
