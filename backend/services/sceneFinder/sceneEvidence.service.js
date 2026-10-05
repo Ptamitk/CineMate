@@ -176,9 +176,17 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     .slice(0, 12)
     .map(x => `${x.contentType}:${x.contentId}`);
 
+  const episodeRankedIds = [...episodeSimilarityMatches]
+    .sort((a, b) => Number(b.imageSimilarity || 0) - Number(a.imageSimilarity || 0))
+    .slice(0, 12)
+    .map(x => `${x.contentType}:${x.contentId}`);
+
+  // Include winners from episode-still retrieval as well as movie/TV artwork.
+  // Episode candidates must not depend on arbitrary text-candidate ordering.
   const visualLabelCandidates = candidates
     .filter(candidate =>
       artworkRankedIds.includes(`${candidate.contentType}:${candidate.contentId}`) ||
+      episodeRankedIds.includes(`${candidate.contentType}:${candidate.contentId}`) ||
       candidates.indexOf(candidate) < 16
     )
     .slice(0, Math.max(8, Math.min(32, Number(process.env.SCENE_FINDER_VISUAL_LABEL_CANDIDATES || 32))));
