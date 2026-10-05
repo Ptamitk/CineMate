@@ -471,9 +471,10 @@ const SceneFinder = () => {
                   </div>
                 </div>
               </div>
-            </div>
+            </motion.div>
           )}
-        </section>
+          </AnimatePresence>
+        </motion.section>
 
         <motion.section initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.15 }} transition={{ duration: 0.7 }} className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5 sm:p-7 lg:p-8">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
