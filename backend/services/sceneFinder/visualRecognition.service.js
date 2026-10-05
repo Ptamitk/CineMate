@@ -119,14 +119,22 @@ const analyzeArtworkSimilarity = async ({ frameFiles = [], candidateArtwork = []
     if (frameEmbeddings.length !== frameFiles.length) return [];
     const artworkResults = [];
     const resolvedArtwork = [];
-    for (const item of validArtwork) {
-      const image = await fetchRemoteImage(item.imageUrl);
-      if (image) resolvedArtwork.push({ ...item, imageUrl: image });
+    const fetchConcurrency = Math.max(2, Math.min(8, Number(process.env.SCENE_FINDER_IMAGE_FETCH_CONCURRENCY || 6)));
+
+    for (let start = 0; start < validArtwork.length; start += fetchConcurrency) {
+      const batch = validArtwork.slice(start, start + fetchConcurrency);
+      const resolved = await Promise.all(batch.map(async item => {
+        const image = await fetchRemoteImage(item.imageUrl);
+        return image ? { ...item, imageUrl: image } : null;
+      }));
+      resolvedArtwork.push(...resolved.filter(Boolean));
     }
+
     if (!resolvedArtwork.length) return [];
+
     const chunkSize = Math.max(4, Math.min(24, Number(process.env.SCENE_FINDER_ARTWORK_EMBED_BATCH || 16)));
 
-    for (let start = 0; start < validArtwork.length; start += chunkSize) {
+    for (let start = 0; start < resolvedArtwork.length; start += chunkSize) {
       const chunk = resolvedArtwork.slice(start, start + chunkSize);
       const embeddings = await extractImageEmbeddings(chunk.map(item => item.imageUrl));
 
