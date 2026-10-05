@@ -2,23 +2,74 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
-const MAX_MEDIA_BYTES =
-  100 * 1024 * 1024;
+const MAX_MEDIA_BYTES = Math.max(
+  5 * 1024 * 1024,
+  Number(process.env.SCENE_FINDER_MAX_MEDIA_BYTES || 100 * 1024 * 1024)
+);
 
-const downloadMediaFile = async (
-  mediaUrl
-) => {
+const DOWNLOAD_TIMEOUT_MS = Math.max(
+  10_000,
+  Number(process.env.SCENE_FINDER_DOWNLOAD_TIMEOUT_MS || 60_000)
+);
+
+const isVideoContentType = (value = "") => {
+  const type = value.split(";")[0].trim().toLowerCase();
+  return type.startsWith("video/") ||
+    type === "application/octet-stream";
+};
+
+const downloadMediaFile = async (mediaUrl) => {
   if (!mediaUrl) {
-    throw new Error(
-      "Media URL is required for download."
-    );
+    throw new Error("Media URL is required for download.");
   }
 
-  const response = await fetch(mediaUrl);
+  let url;
+  try {
+    url = new URL(mediaUrl);
+  } catch {
+    throw new Error("Invalid media URL.");
+  }
+
+  if (!["http:", "https:"].includes(url.protocol)) {
+    throw new Error("Only HTTP(S) media URLs are supported.");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    DOWNLOAD_TIMEOUT_MS
+  );
+
+  let response;
+
+  try {
+    response = await fetch(url, {
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "CineMate-SceneFinder/2.0",
+        Accept: "video/*,application/octet-stream;q=0.9,*/*;q=0.1",
+      },
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error("Video download timed out.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
+    throw new Error(`Media download failed: ${response.status}`);
+  }
+
+  const contentType =
+    response.headers.get("content-type") || "";
+
+  if (!isVideoContentType(contentType)) {
     throw new Error(
-      `Media download failed: ${response.status}`
+      "The supplied URL did not return a supported video file."
     );
   }
 
@@ -26,83 +77,63 @@ const downloadMediaFile = async (
     response.headers.get("content-length") || 0
   );
 
-  if (
-    contentLength &&
-    contentLength > MAX_MEDIA_BYTES
-  ) {
+  if (contentLength > MAX_MEDIA_BYTES) {
     throw new Error(
-      "Reel media exceeds the 100 MB processing limit."
+      "Video exceeds the 100 MB processing limit."
     );
   }
 
   if (!response.body) {
-    throw new Error(
-      "Media download returned an empty response body."
-    );
+    throw new Error("Media download returned an empty response body.");
   }
 
-  const outputDirectory =
-    await fs.promises.mkdtemp(
-      path.join(
-        os.tmpdir(),
-        "cinemate-reel-"
-      )
-    );
+  const outputDirectory = await fs.promises.mkdtemp(
+    path.join(os.tmpdir(), "cinemate-reel-")
+  );
+
+  const extension =
+    contentType.includes("webm") ? ".webm" :
+    contentType.includes("quicktime") ? ".mov" :
+    contentType.includes("matroska") ? ".mkv" :
+    ".mp4";
 
   const outputPath = path.join(
     outputDirectory,
-    "reel-video.mp4"
+    `scene-input${extension}`
   );
 
-  let totalBytes = 0;
   let fileHandle = null;
 
   try {
-    fileHandle =
-      await fs.promises.open(
-        outputPath,
-        "w"
-      );
-
-    const reader =
-      response.body.getReader();
+    fileHandle = await fs.promises.open(outputPath, "w");
+    const reader = response.body.getReader();
+    let totalBytes = 0;
 
     while (true) {
-      const { value, done } =
-        await reader.read();
-
-      if (done) {
-        break;
-      }
+      const { value, done } = await reader.read();
+      if (done) break;
 
       totalBytes += value.byteLength;
 
-      if (
-        totalBytes > MAX_MEDIA_BYTES
-      ) {
+      if (totalBytes > MAX_MEDIA_BYTES) {
         await reader.cancel();
-
         throw new Error(
-          "Reel media exceeds the 100 MB processing limit."
+          "Video exceeds the 100 MB processing limit."
         );
       }
 
-      await fileHandle.write(
-        Buffer.from(value)
-      );
+      await fileHandle.write(Buffer.from(value));
     }
 
     await fileHandle.close();
     fileHandle = null;
 
-    if (totalBytes === 0) {
-      throw new Error(
-        "Downloaded Reel media is empty."
-      );
+    if (!totalBytes) {
+      throw new Error("Downloaded video is empty.");
     }
 
     console.log(
-      "Reel video downloaded:",
+      "Scene Finder V2 media downloaded:",
       outputPath,
       `(${totalBytes} bytes)`
     );
@@ -116,13 +147,10 @@ const downloadMediaFile = async (
       await fileHandle.close().catch(() => {});
     }
 
-    await fs.promises.rm(
-      outputDirectory,
-      {
-        recursive: true,
-        force: true,
-      }
-    ).catch(() => {});
+    await fs.promises.rm(outputDirectory, {
+      recursive: true,
+      force: true,
+    }).catch(() => {});
 
     throw error;
   }
