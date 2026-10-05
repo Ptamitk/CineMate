@@ -411,8 +411,8 @@ const processSceneFinderJob = async (
       mediaInput.source;
 
     if (
-      mediaInput.sourceType ===
-      "reel_url"
+      mediaInput.sourceType === "reel_url" ||
+      mediaInput.sourceType === "media_url"
     ) {
       const downloadedMedia =
         await downloadMediaFile(
