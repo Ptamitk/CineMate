@@ -1,37 +1,71 @@
+const { getReelMediaInput } = require("./reelMedia.service");
 
-const {
-  getReelMediaInput,
-} = require("./reelMedia.service");
+const isInstagramUrl = (value = "") => {
+  try {
+    const url = new URL(value.trim());
+    const host = url.hostname.toLowerCase();
+    return (
+      host === "instagram.com" ||
+      host === "www.instagram.com" ||
+      host === "m.instagram.com" ||
+      host === "instagr.am" ||
+      host === "www.instagr.am"
+    );
+  } catch {
+    return false;
+  }
+};
+
+const getDirectVideoUrl = (value = "") => {
+  try {
+    const url = new URL(value.trim());
+
+    if (!["http:", "https:"].includes(url.protocol)) {
+      throw new Error("Only HTTP(S) video URLs are supported.");
+    }
+
+    return url.toString();
+  } catch (error) {
+    throw new Error(
+      error.message || "Invalid video URL."
+    );
+  }
+};
 
 const getMediaInput = async ({
   reelUrl,
   uploadedFile = null,
 }) => {
-  // Uploaded video has priority.
   if (uploadedFile) {
     return {
       sourceType: "upload",
-      source:
-        uploadedFile.path ||
-        uploadedFile.location,
-      mimeType:
-        uploadedFile.mimetype || "",
+      source: uploadedFile.path || uploadedFile.location,
+      mimeType: uploadedFile.mimetype || "",
+      caption: "",
     };
   }
 
-  // Instagram Reel URL.
-  if (reelUrl?.trim()) {
-    return getReelMediaInput(
-      reelUrl.trim()
-    );
+  const inputUrl = reelUrl?.trim() || "";
+
+  if (!inputUrl) {
+    throw new Error("Video file or video URL is required.");
   }
 
-  throw new Error(
-    "No scene media input was provided."
-  );
+  if (isInstagramUrl(inputUrl)) {
+    return getReelMediaInput(inputUrl);
+  }
+
+  return {
+    sourceType: "media_url",
+    source: inputUrl,
+    mediaUrl: inputUrl,
+    originalReelUrl: inputUrl,
+    caption: "",
+    readyForAnalysis: true,
+  };
 };
 
 module.exports = {
   getMediaInput,
+  isInstagramUrl,
 };
-
