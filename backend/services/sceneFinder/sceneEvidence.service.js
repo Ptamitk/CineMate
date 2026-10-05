@@ -70,12 +70,62 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     maxFrames: Math.max(10, Math.min(16, Number(process.env.SCENE_FINDER_VISUAL_FRAMES || 12)))
   });
 
-  const candidateResult = await discoverSceneCandidates({
+  // Fast-path: when the evidence already contains an exact, strong title,
+  // do not spend time on broad visual/episode analysis.
+  const fastText = [text.caption, text.stableOcr, text.speech]
+    .filter(Boolean)
+    .join(" ");
+  const fastCandidateResult = await discoverSceneCandidates({
     caption: text.caption,
     ocrText: text.stableOcr || text.ocr,
     speechText: text.speech
   });
+  const fastCandidates = fastCandidateResult?.candidates || [];
+  const exactFast = fastCandidates
+    .map(candidate => ({ candidate, exact: exactTitle(fastText, candidate.title, candidate.originalTitle) }))
+    .filter(item => item.exact)
+    .map(item => item.candidate);
 
+  if (exactFast.length === 1 && fastCandidates.length <= 20) {
+    const candidate = exactFast[0];
+    const result = {
+      ...candidate,
+      confidence: 95,
+      sceneScore: 0.95,
+      evidenceType: "text-exact",
+      episode: null,
+      evidence: {
+        captionScore: 0,
+        ocrScore: 1,
+        stableOcrScore: 1,
+        speechScore: 0,
+        artworkAverage: 0,
+        artworkMax: 0,
+        artworkMatchedFrames: 0,
+        artworkTemporalConsistency: 0,
+        visualLabelScore: 0,
+        visualLabelMax: 0,
+        visualLabelMatchedFrames: 0,
+        visualLabelTemporalConsistency: 0,
+        episodeArtworkAverage: 0,
+        episodeArtworkMax: 0,
+        episodeArtworkMatchedFrames: 0,
+        episodeTemporalConsistency: 0
+      }
+    };
+    return {
+      signals,
+      caption,
+      queries: fastCandidateResult?.queries || [],
+      candidates: [result],
+      bestMatch: result,
+      artworkSimilarityMatches: [],
+      episodeSimilarityMatches: [],
+      visualLabelMatches: []
+    };
+  }
+
+  const candidateResult = fastCandidateResult;
   const candidates = candidateResult?.candidates || [];
 
   if (!candidates.length || !visualFrames.length) {
