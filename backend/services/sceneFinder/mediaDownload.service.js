@@ -1,6 +1,8 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const dns = require("dns").promises;
+const net = require("net");
 
 const MAX_MEDIA_BYTES = Math.max(
   5 * 1024 * 1024,
@@ -11,6 +13,40 @@ const DOWNLOAD_TIMEOUT_MS = Math.max(
   10_000,
   Number(process.env.SCENE_FINDER_DOWNLOAD_TIMEOUT_MS || 60_000)
 );
+
+
+const isPrivateAddress = (address) => {
+  if (!address) return true;
+  if (net.isIPv4(address)) {
+    const [a, b] = address.split(".").map(Number);
+    return (
+      a === 10 ||
+      a === 127 ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168)
+    );
+  }
+  if (net.isIPv6(address)) {
+    const normalized = address.toLowerCase();
+    return normalized === "::1" ||
+      normalized.startsWith("fc") ||
+      normalized.startsWith("fd") ||
+      normalized.startsWith("fe80:");
+  }
+  return true;
+};
+
+const assertPublicHost = async (hostname) => {
+  if (!hostname || hostname === "localhost" || hostname.endsWith(".localhost")) {
+    throw new Error("Private media hosts are not allowed.");
+  }
+
+  const addresses = await dns.lookup(hostname, { all: true });
+  if (!addresses.length || addresses.some((item) => isPrivateAddress(item.address))) {
+    throw new Error("Private media hosts are not allowed.");
+  }
+};
 
 const isVideoContentType = (value = "") => {
   const type = value.split(";")[0].trim().toLowerCase();
@@ -34,7 +70,7 @@ const downloadMediaFile = async (mediaUrl) => {
     throw new Error("Only HTTP(S) media URLs are supported.");
   }
 
-  const controller = new AbortController();
+  await assertPublicHost(url.hostname);\n\n  const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
     DOWNLOAD_TIMEOUT_MS
