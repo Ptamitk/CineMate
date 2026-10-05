@@ -99,10 +99,15 @@ const searchTyped = async (query, type, language = "en-US") => {
 };
 
 const extractQueries = ({ caption = "", ocr = "", speech = "" }) => {
+  // Speech is scene dialogue, not a reliable title signal. Use it for
+  // candidate discovery only when visual/text metadata is absent; otherwise
+  // dialogue can turn phrases such as "what's wrong with you" into fake titles.
   const sources = [
     ...String(caption).split(/[\n|]+/),
     ...String(ocr).split(/[\n|]+/),
-    ...String(speech).split(/[.!?\n]+/),
+    ...(!cleanSignal(caption) && !cleanSignal(ocr)
+      ? String(speech).split(/[.!?\n]+/)
+      : []),
   ];
 
   const candidates = sources
