@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight,
   Camera,
@@ -276,23 +277,23 @@ const SceneFinder = () => {
   return (
     <main className="min-h-screen bg-[#050505] px-4 pb-24 pt-28 text-white sm:px-8 lg:px-10">
       <div className="mx-auto max-w-[1600px]">
-        <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.025] px-5 py-12 shadow-2xl sm:px-10 sm:py-16 lg:px-16 lg:py-20">
-          <div className="pointer-events-none absolute -left-40 -top-40 h-96 w-96 rounded-full bg-white/[0.055] blur-[120px]" />
-          <div className="pointer-events-none absolute -bottom-40 -right-20 h-[30rem] w-[30rem] rounded-full bg-white/[0.035] blur-[130px]" />
+        <motion.section\n          initial={{ opacity: 0, y: 24, scale: 0.985 }}\n          animate={{ opacity: 1, y: 0, scale: 1 }}\n          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}\n          className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.025] px-5 py-12 shadow-2xl sm:px-10 sm:py-16 lg:px-16 lg:py-20">
+          <motion.div\n            aria-hidden="true"\n            animate={{ x: [0, 35, 0], y: [0, 20, 0], scale: [1, 1.08, 1] }}\n            transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}\n            className="pointer-events-none absolute -left-40 -top-40 h-96 w-96 rounded-full bg-white/[0.055] blur-[120px]" />
+          </motion.div>\n          <motion.div\n            aria-hidden="true"\n            animate={{ x: [0, -30, 0], y: [0, -25, 0], scale: [1, 1.06, 1] }}\n            transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}\n            className="pointer-events-none absolute -bottom-40 -right-20 h-[30rem] w-[30rem] rounded-full bg-white/[0.035] blur-[130px]" />
 
-          <div className="relative mx-auto max-w-5xl text-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[10px] uppercase tracking-[0.22em] text-white/45">
+          </motion.div>\n\n          <div className="relative mx-auto max-w-5xl text-center">
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12, duration: 0.5 }} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[10px] uppercase tracking-[0.22em] text-white/45">
               <Sparkles size={13} />
               CineMate Scene Finder
               <span className="ml-1 h-1.5 w-1.5 rounded-full bg-emerald-400" />
             </div>
 
-            <h1 className="mt-7 text-5xl font-semibold leading-[0.95] tracking-[-0.045em] sm:text-6xl lg:text-7xl">
+            <h1 className="mt-7 text-6xl font-semibold leading-[0.95] tracking-[-0.045em] sm:text-7xl lg:text-[5.5rem]">
               Find the movie or show
               <span className="block text-white/30">behind any scene.</span>
             </h1>
 
-            <p className="mx-auto mt-6 max-w-2xl text-sm leading-7 text-white/40 sm:text-base">
+            <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-white/45 sm:text-lg">
               Upload a clip or paste a public video/Reel URL. CineMate combines
               visual frames, dialogue, on-screen text and cinematic artwork to find
               the strongest match.
@@ -311,7 +312,7 @@ const SceneFinder = () => {
 
             <form
               onSubmit={submit}
-              className="mx-auto mt-10 max-w-3xl rounded-3xl border border-white/10 bg-black/45 p-2 text-left shadow-[0_30px_100px_rgba(0,0,0,0.45)] backdrop-blur-xl"
+              className="mx-auto mt-10 max-w-4xl rounded-3xl border border-white/10 bg-black/45 p-2 text-left shadow-[0_30px_100px_rgba(0,0,0,0.45)] backdrop-blur-xl"
             >
               <div className="rounded-[1.35rem] border border-white/[0.06] bg-white/[0.018] p-4 sm:p-5">
                 <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/35 px-4">
@@ -461,11 +462,11 @@ const SceneFinder = () => {
           )}
         </section>
 
-        <section className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5 sm:p-7 lg:p-8">
+        <motion.section initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.15 }} transition={{ duration: 0.7 }} className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5 sm:p-7 lg:p-8">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-[10px] uppercase tracking-[0.22em] text-white/25">Recognition engine</p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight">Four layers of evidence.</h2>
+              <h2 className="mt-2 text-3xl font-semibold tracking-tight">Four layers of evidence.</h2>
             </div>
             <div className="flex items-center gap-2 text-[11px] text-white/25">
               <Zap size={14} />
@@ -490,9 +491,9 @@ const SceneFinder = () => {
         </section>
 
         {result && (
-          <section className="mt-6 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.025] shadow-2xl">
-            <div className="grid lg:grid-cols-[330px_1fr]">
-              <div className="relative min-h-[390px] bg-black">
+          <motion.section initial={{ opacity: 0, y: 28, scale: 0.99 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }} className="mt-6 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.025] shadow-2xl">
+            <div className="grid lg:grid-cols-[380px_1fr]">
+              <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.65 }} className="relative min-h-[430px] bg-black">
                 {result.image ? (
                   <img
                     src={result.image}
@@ -532,7 +533,7 @@ const SceneFinder = () => {
                   )}
                 </div>
 
-                <h2 className="mt-5 text-3xl font-semibold tracking-tight sm:text-4xl">{result.title}</h2>
+                <h2 className="mt-5 text-4xl font-semibold tracking-tight sm:text-5xl">{result.title}</h2>
 
                 {result.type === "tv" && (result.seasonNumber || result.episodeNumber) && (
                   <p className="mt-3 text-sm text-white/45">
