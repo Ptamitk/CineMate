@@ -81,14 +81,26 @@ const downloadMediaFile = async (mediaUrl) => {
   let response;
 
   try {
-    response = await fetch(url, {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "CineMate-SceneFinder/2.0",
-        Accept: "video/*,application/octet-stream;q=0.9,*/*;q=0.1",
-      },
-    });
+    let currentUrl = url;
+    for (let redirect = 0; redirect <= 3; redirect += 1) {
+      await assertPublicHost(currentUrl.hostname);
+      response = await fetch(currentUrl, {
+        redirect: "manual",
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "CineMate-SceneFinder/2.0",
+          Accept: "video/*,application/octet-stream;q=0.9,*/*;q=0.1",
+        },
+      });
+      if (![301, 302, 303, 307, 308].includes(response.status)) break;
+      const location = response.headers.get("location");
+      if (!location) throw new Error("Media server returned an invalid redirect.");
+      currentUrl = new URL(location, currentUrl);
+      if (!["http:", "https:"].includes(currentUrl.protocol)) {
+        throw new Error("Only HTTP(S) media URLs are supported.");
+      }
+      if (redirect === 3) throw new Error("Too many media redirects.");
+    }
   } catch (error) {
     if (error?.name === "AbortError") {
       throw new Error("Video download timed out.");
