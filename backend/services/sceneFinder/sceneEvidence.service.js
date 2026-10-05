@@ -1,391 +1,316 @@
-const { analyzeSceneSignals } = require("./sceneSignals.service");
-const { discoverSceneCandidates } = require("./sceneDiscovery.service");
-const { getCandidateArtwork } = require("./tmdbArtwork.service");
-const { getCandidateEpisodeArtwork } = require("./tvEpisodeArtwork.service");
-const { analyzeArtworkSimilarity, analyzeCandidateVisualLabels } = require("./visualRecognition.service");
-const { selectUsefulFrames } = require("./frameSelection.service");
-const { overlapScore, exactTitle, extractTextEvidence } = require("./evidenceCleanup.service");
+const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
-const aggregate = (matches, candidate) => {
-  const rows = (matches || []).filter(item =>
-    Number(item.contentId) === Number(candidate.contentId) &&
-    item.contentType === candidate.contentType
-  );
-  if (!rows.length) return { average: 0, max: 0, matchedFrames: 0, temporalConsistency: 0, bestEpisode: null };
+const headers = () => ({
+  Authorization: `Bearer ${process.env.TMDB_ACCESS_TOKEN}`,
+  accept: "application/json",
+});
 
-  const scores = rows.map(x => Number(x.imageSimilarity || 0)).sort((a, b) => b - a);
-  // Artwork similarity is a graded retrieval signal. Do not throw away
-  // useful near-matches before ranking; exact-scene frames often differ from
-  // TMDB stills because of crops, compression, subtitles and color grading.
-  const strongThreshold = candidate.contentType === "tv" ? 0.60 : 0.68;
-  const strong = rows.filter(x => Number(x.imageSimilarity || 0) >= strongThreshold);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  return {
-    average: scores.slice(0, 3).reduce((a, b) => a + b, 0) / Math.min(3, scores.length),
-    max: scores[0] || 0,
-    matchedFrames: Math.max(0, ...strong.map(x => Number(x.imageFramesMatched || 0))),
-    temporalConsistency: Math.max(0, ...rows.map(x => Number(x.temporalConsistency || 0))),
-    bestEpisode: rows.filter(x => x.seasonNumber)
-      .sort((a, b) => Number(b.imageSimilarity || 0) - Number(a.imageSimilarity || 0))[0] || null
-  };
-};
-
-const aggregateLabel = (matches, candidate) => {
-  const row = (matches || []).find(item =>
-    Number(item.contentId) === Number(candidate.contentId) &&
-    item.contentType === candidate.contentType
-  );
-  return row || {
-    visualLabelScore: 0,
-    visualLabelMax: 0,
-    visualLabelMatchedFrames: 0,
-    visualLabelTemporalConsistency: 0
-  };
-};
-
-const textEvidence = (candidate, text) => {
-  const captionScore = overlapScore(text.caption, candidate.title, candidate.originalTitle);
-  const ocrScore = overlapScore(text.ocr, candidate.title, candidate.originalTitle);
-  const stableOcrScore = overlapScore(text.stableOcr, candidate.title, candidate.originalTitle);
-  const speechScore = overlapScore(text.speech, candidate.title, candidate.originalTitle);
-  const captionExact = exactTitle(text.caption, candidate.title, candidate.originalTitle);
-  const speechExact = exactTitle(text.speech, candidate.title, candidate.originalTitle);
-  const stableOcrExact = exactTitle(text.stableOcr, candidate.title, candidate.originalTitle);
-  const exact = captionExact || speechExact || stableOcrExact;
-  // One ordinary spoken sentence is not independent title evidence.
-  // OCR repeated across frames is much stronger; speech can corroborate only
-  // when it agrees with OCR, or when the transcript is an exact short title.
-  const speechWords = String(text.speech || "").trim().split(/\s+/).filter(Boolean);
-  const speechCorroborates = speechScore >= 0.72 && stableOcrScore >= 0.45;
-  const shortExactSpeech = speechExact && speechWords.length <= 7;
-  const independent = (stableOcrScore >= 0.72 ? 1 : 0) +
-    (speechCorroborates || shortExactSpeech ? 1 : 0);
-
-  return { captionScore, ocrScore, stableOcrScore, speechScore, captionExact, speechExact, stableOcrExact, exact, independent };
-};
-
-const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audioPath = null, caption = "" }) => {
-  const signals = await analyzeSceneSignals({
-    frameFiles: ocrFrameFiles.length ? ocrFrameFiles : frameFiles,
-    audioPath
+const request = async (path, params = {}, attempt = 0) => {
+  const url = new URL(`${TMDB_BASE_URL}${path}`);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
   });
 
-  const text = extractTextEvidence({
-    caption,
-    ocrResults: signals.ocr.results || [],
-    speech: signals.speech.text || ""
-  });
+  const controller = new AbortController();
+  const timeoutMs = Math.max(5000, Number(process.env.SCENE_FINDER_TMDB_TIMEOUT_MS || 10000));
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-  const visualFrames = selectUsefulFrames({
-    frameFiles,
-    maxFrames: Math.max(10, Math.min(16, Number(process.env.SCENE_FINDER_VISUAL_FRAMES || 12)))
-  });
-
-  // Fast-path: when the evidence already contains an exact, strong title,
-  // do not spend time on broad visual/episode analysis.
-  const fastText = [text.caption, text.stableOcr, text.speech]
-    .filter(Boolean)
-    .join(" ");
-  const fastCandidateResult = await discoverSceneCandidates({
-    caption: text.caption,
-    ocrText: text.stableOcr || text.ocr,
-    speechText: text.speech
-  });
-  const fastCandidates = fastCandidateResult?.candidates || [];
-  const exactFast = fastCandidates
-    .map(candidate => ({ candidate, exact: exactTitle(fastText, candidate.title, candidate.originalTitle) }))
-    .filter(item => item.exact)
-    .map(item => item.candidate);
-
-  const fastArtworkCandidates = fastCandidates.filter(candidate =>
-    exactFast.some(exact => exact.contentId === candidate.contentId && exact.contentType === candidate.contentType)
-  );
-
-  if (exactFast.length === 1 && fastCandidates.length <= 20) {
-    const candidate = exactFast[0];
-    const result = {
-      ...candidate,
-      confidence: 95,
-      sceneScore: 0.95,
-      evidenceType: "text-exact",
-      episode: null,
-      evidence: {
-        captionScore: 0,
-        ocrScore: 1,
-        stableOcrScore: 1,
-        speechScore: 0,
-        artworkAverage: 0,
-        artworkMax: 0,
-        artworkMatchedFrames: 0,
-        artworkTemporalConsistency: 0,
-        visualLabelScore: 0,
-        visualLabelMax: 0,
-        visualLabelMatchedFrames: 0,
-        visualLabelTemporalConsistency: 0,
-        episodeArtworkAverage: 0,
-        episodeArtworkMax: 0,
-        episodeArtworkMatchedFrames: 0,
-        episodeTemporalConsistency: 0
-      }
-    };
-    return {
-      signals,
-      caption,
-      queries: fastCandidateResult?.queries || [],
-      candidates: [result],
-      bestMatch: result,
-      artworkSimilarityMatches: [],
-      episodeSimilarityMatches: [],
-      visualLabelMatches: []
-    };
-  }
-
-  const candidateResult = fastCandidateResult;
-  const candidates = candidateResult?.candidates || [];
-
-  if (!candidates.length || !visualFrames.length) {
-    return {
-      signals, caption, queries: candidateResult?.queries || [], candidates: [],
-      bestMatch: null, artworkSimilarityMatches: [], episodeSimilarityMatches: [], visualLabelMatches: []
-    };
-  }
-
-  const artworkCandidates = await getCandidateArtwork(
-    candidates,
-    Math.min(candidates.length, Math.max(20, Number(process.env.SCENE_FINDER_ARTWORK_CANDIDATES || 64)))
-  );
-
-  const tvCandidates = candidates.filter(x => x.contentType === "tv");
-  const episodeArtwork = await getCandidateEpisodeArtwork(
-    tvCandidates,
-    Math.min(tvCandidates.length, Number(process.env.SCENE_FINDER_EPISODE_CANDIDATES || 8))
-  );
-
-  const artworkFrames = selectUsefulFrames({
-    frameFiles: visualFrames,
-    maxFrames: Math.min(14, Number(process.env.SCENE_FINDER_ARTWORK_FRAMES || 14))
-  });
-
-  const [artworkSimilarityMatches, episodeSimilarityMatches] = await Promise.all([
-    analyzeArtworkSimilarity({ frameFiles: artworkFrames, candidateArtwork: artworkCandidates }),
-    analyzeArtworkSimilarity({ frameFiles: artworkFrames, candidateArtwork: episodeArtwork })
-  ]);
-
-  const artworkRankedIds = [...artworkSimilarityMatches]
-    .sort((a, b) => Number(b.imageSimilarity || 0) - Number(a.imageSimilarity || 0))
-    .slice(0, 12)
-    .map(x => `${x.contentType}:${x.contentId}`);
-
-  const episodeRankedIds = [...episodeSimilarityMatches]
-    .sort((a, b) => Number(b.imageSimilarity || 0) - Number(a.imageSimilarity || 0))
-    .slice(0, 12)
-    .map(x => `${x.contentType}:${x.contentId}`);
-
-  // Include winners from episode-still retrieval as well as movie/TV artwork.
-  // Episode candidates must not depend on arbitrary text-candidate ordering.
-  const visualLabelCandidates = candidates
-    .filter(candidate =>
-      artworkRankedIds.includes(`${candidate.contentType}:${candidate.contentId}`) ||
-      episodeRankedIds.includes(`${candidate.contentType}:${candidate.contentId}`) ||
-      candidates.indexOf(candidate) < 16
-    )
-    .slice(0, Math.max(8, Math.min(32, Number(process.env.SCENE_FINDER_VISUAL_LABEL_CANDIDATES || 32))));
-
-  const visualLabelMatches = await analyzeCandidateVisualLabels({
-    frameFiles: artworkFrames,
-    candidates: visualLabelCandidates
-  });
-
-  const scored = candidates.map(candidate => {
-    const t = textEvidence(candidate, text);
-    const art = aggregate(artworkSimilarityMatches, candidate);
-    const ep = aggregate(episodeSimilarityMatches, candidate);
-    const label = aggregateLabel(visualLabelMatches, candidate);
-
-    const textScore = t.exact
-      ? 0.97
-      : Math.max(t.stableOcrScore * 0.52, t.speechScore * 0.40, t.captionScore * 0.28);
-
-    const artworkScore = Math.max(
-      art.average * 0.58 + art.max * 0.17 + art.temporalConsistency * 0.25,
-      ep.average * 0.62 + ep.max * 0.18 + ep.temporalConsistency * 0.20
-    );
-
-    const artworkOnlyConfidence = Math.max(
-      art.average * 0.62 + art.max * 0.38,
-      ep.average * 0.64 + ep.max * 0.36
-    );
-
-    const labelScore =
-      label.visualLabelScore * 0.58 +
-      label.visualLabelMax * 0.17 +
-      label.visualLabelTemporalConsistency * 0.25;
-
-    // Relative CLIP evidence is intentionally calibrated separately from the
-    // absolute artwork cosine score. Artwork stills can differ substantially
-    // from the exact uploaded frame (crop, lighting, pose, subtitle overlay),
-    // while a repeated, high-margin label winner can remain highly useful.
-    const visualScore = Math.max(
-      artworkScore * 0.42 + labelScore * 0.58,
-      labelScore
-    );
-
-    const strongRelativeVisual =
-      label.visualLabelScore >= 0.52 &&
-      label.visualLabelMax >= 0.68 &&
-      label.visualLabelMatchedFrames >= 4 &&
-      label.visualLabelTemporalConsistency >= 0.35 &&
-      label.visualLabelMargin >= 0.18;
-
-    const strongArtworkVisual =
-      (art.average >= 0.58 && art.max >= 0.66 && art.matchedFrames >= 2) ||
-      (ep.average >= 0.58 && ep.max >= 0.64 && ep.matchedFrames >= 2);
-
-    const visualCorroborated =
-      strongRelativeVisual ||
-      strongArtworkVisual ||
-      (label.visualLabelScore >= 0.45 &&
-        label.visualLabelMatchedFrames >= 3 &&
-        label.visualLabelTemporalConsistency >= 0.25 &&
-        label.visualLabelMargin >= 0.08);
-
-    const textCorroborated = t.exact || t.independent >= 1;
-    let score = textScore * 0.25 + visualScore * 0.75;
-
-    if (!textCorroborated && !visualCorroborated) score = Math.min(score, 0.54);
-
-    // A strong, repeated artwork retrieval signal is independent evidence even
-    // when the zero-shot title classifier is conservative.
-    const artworkRetrievalCorroborated =
-      (art.matchedFrames >= 2 && art.average >= 0.58 && art.max >= 0.66) ||
-      (ep.matchedFrames >= 2 && ep.average >= 0.58 && ep.max >= 0.64);
-    if (artworkRetrievalCorroborated) {
-      score = Math.max(score, Math.min(0.88, artworkScore * 1.08, artworkOnlyConfidence));
+  try {
+    const response = await fetch(url, { headers: headers(), signal: controller.signal });
+    if (!response.ok) {
+      const body = await response.text();
+      const error = new Error(`TMDB ${response.status}: ${body.slice(0, 300)}`);
+      error.status = response.status;
+      throw error;
     }
-    if (t.exact) score = Math.max(score, 0.92);
+    return response.json();
+  } catch (error) {
+    const retryable = error.name === "AbortError" || error.status === 429 || (error.status >= 500 && error.status < 600);
+    if (retryable && attempt < 1) {
+      await sleep(250 * 2 ** attempt);
+      return request(path, params, attempt + 1);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
 
-    const episode = ep.bestEpisode;
+const normalize = (value = "") =>
+  String(value)
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-    return {
-      title: candidate.title,
-      contentId: candidate.contentId,
-      contentType: candidate.contentType,
-      releaseDate: candidate.releaseDate,
-      rating: candidate.rating,
-      image: candidate.image,
-      confidence: Math.round(Math.min(0.98, score) * 100),
-      sceneScore: Number(Math.min(0.98, score).toFixed(4)),
-      evidenceType: episode ? "episode-visual" : visualCorroborated ? "visual" : t.exact ? "text-exact" : t.independent ? "text-corroborated" : "weak",
-      episode: episode ? {
-        seasonNumber: episode.seasonNumber,
-        episodeNumber: episode.episodeNumber,
-        episodeName: episode.episodeName || ""
-      } : null,
-      evidence: {
-        captionScore: Number(t.captionScore.toFixed(4)),
-        ocrScore: Number(t.ocrScore.toFixed(4)),
-        stableOcrScore: Number(t.stableOcrScore.toFixed(4)),
-        speechScore: Number(t.speechScore.toFixed(4)),
-        artworkAverage: Number(art.average.toFixed(4)),
-        artworkMax: Number(art.max.toFixed(4)),
-        artworkMatchedFrames: art.matchedFrames,
-        artworkTemporalConsistency: Number(art.temporalConsistency.toFixed(4)),
-        visualLabelScore: Number(label.visualLabelScore.toFixed(4)),
-        visualLabelMax: Number(label.visualLabelMax.toFixed(4)),
-        visualLabelMatchedFrames: label.visualLabelMatchedFrames,
-        visualLabelTemporalConsistency: Number(label.visualLabelTemporalConsistency.toFixed(4)),
-        visualLabelMargin: Number((label.visualLabelMargin || 0).toFixed(4)),
-        episodeArtworkAverage: Number(ep.average.toFixed(4)),
-        episodeArtworkMax: Number(ep.max.toFixed(4)),
-        episodeArtworkMatchedFrames: ep.matchedFrames,
-        episodeTemporalConsistency: Number(ep.temporalConsistency.toFixed(4))
-      }
-    };
-  }).sort((a, b) => b.sceneScore - a.sceneScore);
+const unique = (items) => [...new Set(items.filter(Boolean))];
 
-  const best = scored[0] || null;
-  const second = scored[1] || null;
-  const margin = best && second ? best.sceneScore - second.sceneScore : 0;
-  // A visual-only match must be genuinely strong. CLIP can be confidently
-  // wrong on visually similar frames, so a high relative label score alone
-  // is never enough to accept a title.
-  const visualAccepted = Boolean(best) &&
-    best.evidenceType === "visual" &&
-    margin >= 0.07 &&
-    (
-      (
-        best.sceneScore >= 0.62 &&
-        Number(best.evidence?.visualLabelScore || 0) >= 0.52 &&
-        Number(best.evidence?.visualLabelMax || 0) >= 0.68 &&
-        Number(best.evidence?.visualLabelMatchedFrames || 0) >= 4 &&
-        Number(best.evidence?.visualLabelTemporalConsistency || 0) >= 0.35 &&
-        Number(best.evidence?.visualLabelMargin || 0) >= 0.18
-      ) ||
-      (
-        best.sceneScore >= 0.66 &&
-        Number(best.evidence?.artworkMatchedFrames || 0) >= 2 &&
-        Number(best.evidence?.artworkAverage || 0) >= 0.58
-      ) ||
-      (
-        best.sceneScore >= 0.66 &&
-        Number(best.evidence?.episodeArtworkMatchedFrames || 0) >= 2 &&
-        Number(best.evidence?.episodeArtworkAverage || 0) >= 0.58
-      )
-    );
+const cleanSignal = (value = "") =>
+  String(value)
+    .normalize("NFKC")
+    .replace(/[@#][\p{L}\p{N}_-]+/gu, " ")
+    .replace(/\b(?:fyp|viral|explore|reels?|instagram|follow|subscribe|like|share|comment|tag|now playing|only in theaters?|coming soon|opening night|audience reaction|exclusive look|official trailer|watch now|buy tickets?|in theaters? (now|soon))\b/gi, " ")
+    .replace(/\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  const corroboratedTextAccepted = Boolean(best) &&
-    best.evidenceType === "text-corroborated" &&
-    best.sceneScore >= 0.72 &&
-    margin >= 0.07;
+const looksLikeDialogue = (value = "") => {
+  const text = cleanSignal(value);
+  if (!text || text.length > 180) return false;
 
-  const exactTextAccepted = Boolean(best) &&
-    best.evidenceType === "text-exact" &&
-    best.sceneScore >= 0.92 &&
-    margin >= 0.035;
+  const words = text.split(/\s+/).filter(Boolean);
+  if (!words.length) return false;
 
-  const accepted = visualAccepted || corroboratedTextAccepted || exactTextAccepted;
+  const lower = text.toLowerCase();
+  const dialogueCue = /(?:what's wrong|what are you|who are you|where are you|why are you|how are you|i don't know|i've seen|what do you|you know|come on|please stop|look at me)/i.test(lower);
+  const startsWithDialogueWord = /^(what|why|who|how|where|when|which|i|you|we|they|he|she|do|did|does|are|is|can|could|would|will|please|look|listen)\b/i.test(words[0]);
 
-  const rejectionReason = !best
-    ? "no-candidates"
-    : !accepted
-      ? best.sceneScore < 0.72
-        ? "best-score-below-threshold"
-        : margin < (best.evidenceType === "text-exact" ? 0.035 : 0.07)
-          ? "insufficient-margin"
-          : best.evidenceType === "visual" && (
-              Number(best.evidence?.visualLabelScore || 0) < 0.55 ||
-              Number(best.evidence?.visualLabelMatchedFrames || 0) < 3 ||
-              Number(best.evidence?.visualLabelTemporalConsistency || 0) < 0.30
-            )
-            ? "visual-corroboration-too-weak"
-            : "evidence-policy-rejected"
-      : "accepted";
+  return dialogueCue || (words.length <= 12 && startsWithDialogueWord);
+};
 
-  console.log("Scene Finder production decision:", {
-    accepted,
-    bestTitle: best?.title || "",
-    bestScore: best?.sceneScore || 0,
-    margin: Number(margin.toFixed(4)),
-    reason: rejectionReason,
-    artworkMatches: artworkSimilarityMatches.length,
-    episodeArtworkMatches: episodeSimilarityMatches.length,
-    visualLabelMatches: visualLabelMatches.length,
-  });
+const isUsefulQuery = (value) => {
+  const text = cleanSignal(value);
+  const words = text.split(/\s+/).filter(Boolean);
 
-  console.log("Scene Finder production ranking:", scored.slice(0, 8).map(x => ({
-    title: x.title, score: x.sceneScore, evidenceType: x.evidenceType, episode: x.episode, evidence: x.evidence
-  })));
+  if (!text || text.length < 3 || text.length > 100 || words.length > 14) return false;
+  if (/^[\d\s._-]+$/.test(text)) return false;
+  if ((text.match(/\p{L}/gu) || []).length < 3) return false;
 
+  if (looksLikeDialogue(text)) return false;
+  if (/(?:@\w+|#\w+)/.test(text)) return false;
+  if (/\b(?:movie|film|show|series|season|episode|part|chapter|trailer|official|watch|story|plot)\b/i.test(text) && words.length <= 5) return false;
+
+  return true;
+};
+
+const toCandidate = (item) => {
+  const contentType = item.contentType || (item.media_type === "tv" || item.media_type === "movie" ? item.media_type : null);
+  if (!contentType || !item.id) return null;
   return {
-    signals,
-    caption,
-    queries: candidateResult?.queries || [],
-    candidates: scored,
-    bestMatch: accepted ? best : null,
-    artworkSimilarityMatches,
-    episodeSimilarityMatches,
-    visualLabelMatches
+    contentId: Number(item.id),
+    contentType,
+    title: contentType === "tv" ? item.name || item.original_name || "" : item.title || item.original_title || "",
+    originalTitle: contentType === "tv" ? item.original_name || item.name || "" : item.original_title || item.title || "",
+    overview: item.overview || "",
+    releaseDate: contentType === "tv" ? item.first_air_date || "" : item.release_date || "",
+    rating: Number(item.vote_average || 0),
+    popularity: Number(item.popularity || 0),
+    voteCount: Number(item.vote_count || 0),
+    image: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : "",
+    backdropImage: item.backdrop_path ? `https://image.tmdb.org/t/p/w780${item.backdrop_path}` : "",
   };
 };
 
-module.exports = { analyzeSceneEvidence };
+const dedupe = (items) => {
+  const map = new Map();
+  for (const item of items) {
+    if (!item?.contentId || !item?.contentType || !item.title) continue;
+    const key = `${item.contentType}:${item.contentId}`;
+    if (!map.has(key)) map.set(key, item);
+  }
+  return [...map.values()];
+};
+
+const searchMulti = async (query, language = "en-US") => {
+  const data = await request("/search/multi", { query, language, include_adult: false, page: 1 });
+  return (data.results || []).filter((item) => item.media_type === "tv" || item.media_type === "movie").map(toCandidate).filter(Boolean);
+};
+
+const searchTyped = async (query, type, language = "en-US") => {
+  const endpoint = type === "tv" ? "/search/tv" : "/search/movie";
+  const data = await request(endpoint, { query, language, include_adult: false, page: 1 });
+  return (data.results || []).map((item) => toCandidate({ ...item, contentType: type })).filter(Boolean);
+};
+
+const extractQueries = ({ caption = "", ocr = "", speech = "" }) => {
+  const sources = [
+    ...String(caption).split(/[\n|]+/),
+    ...String(ocr).split(/[\n|]+/),
+    ...(!cleanSignal(caption) && !cleanSignal(ocr) ? String(speech).split(/[.!?\n]+/) : []),
+  ];
+
+  const candidates = sources
+    .map(cleanSignal)
+    .filter(isUsefulQuery)
+    .sort((a, b) => {
+      const aTitleLike = /\b(?:movie|film|series|season|episode|part|chapter)\b/i.test(a) ? 1 : 0;
+      const bTitleLike = /\b(?:movie|film|series|season|episode|part|chapter)\b/i.test(b) ? 1 : 0;
+      return bTitleLike - aTitleLike || b.length - a.length;
+    });
+
+  const querySet = new Set();
+  for (const line of candidates.slice(0, 6)) {
+    const words = line.split(/\s+/);
+    querySet.add(line);
+    if (words.length >= 2 && words.length <= 8) {
+      querySet.add(words.slice(0, Math.min(5, words.length)).join(" "));
+      querySet.add(words.slice(-Math.min(5, words.length)).join(" "));
+    }
+  }
+
+  return unique([...querySet]).slice(0, 10);
+};
+
+let broadDiscoveryCache = null;
+let broadDiscoveryExpiresAt = 0;
+
+const discoverSlices = async () => {
+  if (broadDiscoveryCache && Date.now() < broadDiscoveryExpiresAt) {
+    return broadDiscoveryCache;
+  }
+
+  const slices = [
+    ["movie", { sort_by: "popularity.desc", region: "IN" }],
+    ["movie", { sort_by: "vote_count.desc", region: "IN", vote_count_gte: 50 }],
+    ["movie", { sort_by: "vote_average.desc", region: "IN", vote_count_gte: 20 }],
+    ["movie", { sort_by: "primary_release_date.desc", region: "IN" }],
+    ["movie", { sort_by: "popularity.desc", with_original_language: "hi", region: "IN" }],
+    ["movie", { sort_by: "popularity.desc", with_original_language: "ta", region: "IN" }],
+    ["movie", { sort_by: "popularity.desc", with_original_language: "te", region: "IN" }],
+    ["tv", { sort_by: "popularity.desc", region: "IN" }],
+    ["tv", { sort_by: "vote_count.desc", region: "IN", vote_count_gte: 50 }],
+    ["tv", { sort_by: "vote_average.desc", region: "IN", vote_count_gte: 20 }],
+    ["tv", { sort_by: "first_air_date.desc", region: "IN" }],
+    ["tv", { sort_by: "popularity.desc", with_original_language: "hi", region: "IN" }],
+    ["tv", { sort_by: "popularity.desc", with_original_language: "ko", region: "IN" }],
+  ];
+
+  const pages = Math.max(1, Math.min(3, Number(process.env.SCENE_FINDER_DISCOVERY_PAGES || 2)));
+  const tasks = slices.flatMap(([type, baseParams]) =>
+    Array.from({ length: pages }, (_, i) => ({ type, baseParams, page: i + 1 }))
+  );
+
+  const concurrency = Math.max(3, Math.min(6, Number(process.env.SCENE_FINDER_DISCOVERY_CONCURRENCY || 6)));
+  const output = [];
+
+  for (let i = 0; i < tasks.length; i += concurrency) {
+    const results = await Promise.all(tasks.slice(i, i + concurrency).map(async ({ type, baseParams, page }) => {
+      try {
+        const data = await request(`/discover/${type}`, {
+          ...baseParams,
+          language: "en-US",
+          include_adult: false,
+          include_video: false,
+          page,
+        });
+        return (data.results || []).map((item) => toCandidate({ ...item, contentType: type })).filter(Boolean);
+      } catch (error) {
+        console.error(`Scene discovery ${type} slice failed:`, error.message);
+        return [];
+      }
+    }));
+    output.push(...results.flat());
+  }
+
+  broadDiscoveryCache = dedupe(output);
+  broadDiscoveryExpiresAt = Date.now() + Math.max(60, Number(process.env.SCENE_FINDER_DISCOVERY_CACHE_SECONDS || 900)) * 1000;
+  return broadDiscoveryCache;
+};
+
+const tokenSimilarity = (a, b) => {
+  const aa = new Set(normalize(a).split(" ").filter((x) => x.length > 1));
+  const bb = new Set(normalize(b).split(" ").filter((x) => x.length > 1));
+  if (!aa.size || !bb.size) return 0;
+  return [...aa].filter((x) => bb.has(x)).length / Math.max(aa.size, bb.size);
+};
+
+const rankCandidate = (candidate, queries) => {
+  let titleScore = 0;
+  let overviewScore = 0;
+
+  for (const query of queries) {
+    const q = normalize(query);
+    const queryWords = q.split(" ").filter((word) => word.length >= 2);
+    if (!q || queryWords.length === 0) continue;
+
+    for (const name of [candidate.title, candidate.originalTitle]) {
+      const n = normalize(name);
+      const nameWords = n.split(" ").filter((word) => word.length >= 2);
+
+      if (q === n) {
+        titleScore = Math.max(titleScore, 1);
+        continue;
+      }
+
+      const containment = n.includes(q) || q.includes(n);
+      const lengthRatio = Math.min(queryWords.length, nameWords.length) / Math.max(queryWords.length, nameWords.length);
+
+      if (containment && lengthRatio >= 0.5) {
+        titleScore = Math.max(titleScore, 0.94);
+      } else {
+        const similarity = tokenSimilarity(q, n);
+        titleScore = Math.max(titleScore, similarity * (queryWords.length >= 3 ? 0.78 : 0.88));
+      }
+    }
+
+    overviewScore = Math.max(overviewScore, tokenSimilarity(q, candidate.overview) * 0.45);
+  }
+
+  return titleScore * 0.82 + overviewScore * 0.05 + Math.min(1, candidate.popularity / 100) * 0.06 + Math.min(1, candidate.voteCount / 5000) * 0.04 + Math.min(1, candidate.rating / 10) * 0.03;
+};
+
+const discoverSceneCandidates = async ({ caption = "", ocrText = "", speechText = "" }) => {
+  const queries = extractQueries({ caption, ocr: ocrText, speech: speechText });
+  const searched = [];
+  const searchConcurrency = Math.max(2, Math.min(6, Number(process.env.SCENE_FINDER_SEARCH_CONCURRENCY || 6)));
+
+  for (let index = 0; index < queries.length; index += searchConcurrency) {
+    const results = await Promise.all(queries.slice(index, index + searchConcurrency).map(async (query) => {
+      try {
+        const [multiEn, multiHi] = await Promise.all([
+          searchMulti(query, "en-US"),
+          searchMulti(query, "hi-IN"),
+        ]);
+
+        const merged = [...multiEn, ...multiHi];
+
+        if (merged.length < 3) {
+          const typed = await Promise.all([
+            searchTyped(query, "movie", "en-US"),
+            searchTyped(query, "tv", "en-US"),
+          ]);
+          merged.push(...typed.flat());
+        }
+
+        return merged;
+      } catch (error) {
+        console.error(`Scene search failed for "${query}":`, error.message);
+        return [];
+      }
+    }));
+
+    searched.push(...results.flat());
+  }
+
+  const rankedSearch = dedupe(searched)
+    .map((candidate) => ({ candidate, retrievalScore: rankCandidate(candidate, queries) }))
+    .sort((a, b) => b.retrievalScore - a.retrievalScore);
+
+  const searchLimit = Math.max(24, Number(process.env.SCENE_FINDER_SEARCH_CANDIDATES || 64));
+  let candidates = rankedSearch.slice(0, searchLimit).map((item) => item.candidate);
+  const bestRetrieval = rankedSearch[0]?.retrievalScore || 0;
+
+  if (candidates.length < 32 || bestRetrieval < 0.58 || queries.length === 0) {
+    const broad = await discoverSlices();
+    candidates = dedupe([...candidates, ...broad]);
+  }
+
+  const maxCandidates = Math.max(120, Number(process.env.SCENE_FINDER_MAX_CANDIDATES || 260));
+  candidates = candidates
+    .map((candidate) => ({ candidate, retrievalScore: rankCandidate(candidate, queries) }))
+    .sort((a, b) => b.retrievalScore - a.retrievalScore || (b.candidate.popularity || 0) - (a.candidate.popularity || 0))
+    .slice(0, maxCandidates)
+    .map((item) => item.candidate);
+
+  return { queries, candidates };
+};
+
+module.exports = {
+  discoverSceneCandidates,
+  extractQueries,
+  looksLikeDialogue,
+  isUsefulQuery,
+};
