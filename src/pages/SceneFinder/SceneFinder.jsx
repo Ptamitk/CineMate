@@ -497,7 +497,7 @@ const SceneFinder = () => {
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">{title}</span>
                   <span className="text-[10px] text-white/15">0{index + 1}</span>
-                </div>
+            </motion.div>
                 <p className="mt-2 text-xs leading-5 text-white/30">{text}</p>
               </div>
             ))}
@@ -532,7 +532,7 @@ const SceneFinder = () => {
                     </span>
                   )}
                 </div>
-              </div>
+              </motion.div>
 
               <div className="p-6 sm:p-8 lg:p-10">
                 <div className="flex flex-wrap items-center gap-2">
