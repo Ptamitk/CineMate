@@ -127,14 +127,14 @@ const analyzeSceneEvidence = async ({
 
   const visualFrames = selectUsefulFrames({
     frameFiles,
-    maxFrames: 18,
+    maxFrames: 20,
   });
 
   const visualAnalysis = await analyzeVisualFrames({
     frameFiles: visualFrames,
   });
 
-  const candidateResult = await findSceneCandidates({
+  const candidateResult = await discoverSceneCandidates({
     ocrText: signals.ocr.text,
     speechText: signals.speech.text,
     caption,
@@ -276,12 +276,12 @@ const analyzeSceneEvidence = async ({
     (
       best.evidenceType === "text-exact" ||
       (
-        best.sceneScore >= 0.66 &&
-        margin >= 0.06 &&
+        best.sceneScore >= 0.63 &&
+        margin >= 0.045 &&
         (
           best.evidence.artworkMatchedFrames >= 2 ||
-          best.evidence.ocrScore >= 0.75 ||
-          best.evidence.speechScore >= 0.75
+          best.evidence.ocrScore >= 0.72 ||
+          best.evidence.speechScore >= 0.72
         )
       )
     );
