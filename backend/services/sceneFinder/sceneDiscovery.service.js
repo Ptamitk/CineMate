@@ -179,26 +179,40 @@ const discoverSlices = async () => {
     Math.min(3, Number(process.env.SCENE_FINDER_DISCOVERY_PAGES || 2))
   );
 
+  const tasks = [];
   for (const [type, baseParams] of slices) {
     for (let page = 1; page <= pages; page += 1) {
-      try {
-        const data = await request(`/discover/${type}`, {
-          ...baseParams,
-          language: "en-US",
-          include_adult: false,
-          include_video: false,
-          page,
-        });
-
-        output.push(
-          ...(data.results || [])
-            .map((item) => toCandidate({ ...item, contentType: type }))
-            .filter(Boolean)
-        );
-      } catch (error) {
-        console.error(`Scene discovery ${type} slice failed:`, error.message);
-      }
+      tasks.push({ type, baseParams, page });
     }
+  }
+
+  const concurrency = Math.max(
+    2,
+    Math.min(6, Number(process.env.SCENE_FINDER_DISCOVERY_CONCURRENCY || 4))
+  );
+
+  for (let index = 0; index < tasks.length; index += concurrency) {
+    const batch = tasks.slice(index, index + concurrency);
+    const results = await Promise.all(
+      batch.map(async ({ type, baseParams, page }) => {
+        try {
+          const data = await request(`/discover/${type}`, {
+            ...baseParams,
+            language: "en-US",
+            include_adult: false,
+            include_video: false,
+            page,
+          });
+          return (data.results || [])
+            .map((item) => toCandidate({ ...item, contentType: type }))
+            .filter(Boolean);
+        } catch (error) {
+          console.error(`Scene discovery ${type} slice failed:`, error.message);
+          return [];
+        }
+      })
+    );
+    output.push(...results.flat());
   }
 
   return output;
@@ -282,12 +296,19 @@ const discoverSceneCandidates = async ({
     .slice(0, searchLimit)
     .map((item) => item.candidate);
 
-  const broad = await discoverSlices();
+  const bestRetrieval = rankedSearch[0]?.retrievalScore || 0;
+  const needsBroadDiscovery =
+    candidates.length < 40 ||
+    bestRetrieval < 0.58 ||
+    queries.length === 0;
 
-  candidates = dedupe([
-    ...candidates,
-    ...broad,
-  ]);
+  if (needsBroadDiscovery) {
+    const broad = await discoverSlices();
+    candidates = dedupe([
+      ...candidates,
+      ...broad,
+    ]);
+  }
 
   const maxCandidates = Math.max(
     80,
