@@ -14,7 +14,7 @@ const request = async (path, params = {}, attempt = 0) => {
   });
 
   const controller = new AbortController();
-  const timeoutMs = Math.max(5000, Number(process.env.SCENE_FINDER_TMDB_TIMEOUT_MS || 15000));
+  const timeoutMs = Math.max(5000, Number(process.env.SCENE_FINDER_TMDB_TIMEOUT_MS || 10000));
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
@@ -28,8 +28,8 @@ const request = async (path, params = {}, attempt = 0) => {
     return response.json();
   } catch (error) {
     const retryable = error.name === "AbortError" || error.status === 429 || (error.status >= 500 && error.status < 600);
-    if (retryable && attempt < 2) {
-      await sleep(350 * 2 ** attempt);
+    if (retryable && attempt < 1) {
+      await sleep(250 * 2 ** attempt);
       return request(path, params, attempt + 1);
     }
     throw error;
@@ -89,7 +89,7 @@ const dedupe = items => {
 
 const searchMulti = async (query, language = "en-US") => {
   const data = await request("/search/multi", { query, language, include_adult: false, page: 1 });
-  return (data.results || []).filter(item => item.media_type === "movie" || item.media_type === "tv").map(toCandidate).filter(Boolean);
+  return (data.results || []).filter(item => item.media_type === "tv" || item.media_type === "movie").map(toCandidate).filter(Boolean);
 };
 
 const searchTyped = async (query, type, language = "en-US") => {
@@ -104,10 +104,18 @@ const extractQueries = ({ caption = "", ocr = "", speech = "" }) => {
     ...String(ocr).split(/[\n|]+/),
     ...String(speech).split(/[.!?\n]+/),
   ];
-  const lines = sources.map(cleanSignal).filter(isUsefulQuery);
-  const querySet = new Set();
 
-  for (const line of lines.slice(0, 16)) {
+  const candidates = sources
+    .map(cleanSignal)
+    .filter(isUsefulQuery)
+    .sort((a, b) => {
+      const aTitleLike = /\b(?:movie|film|series|season|episode|part|chapter)\b/i.test(a) ? 1 : 0;
+      const bTitleLike = /\b(?:movie|film|series|season|episode|part|chapter)\b/i.test(b) ? 1 : 0;
+      return bTitleLike - aTitleLike || b.length - a.length;
+    });
+
+  const querySet = new Set();
+  for (const line of candidates.slice(0, 6)) {
     const words = line.split(/\s+/);
     querySet.add(line);
     if (words.length >= 2 && words.length <= 8) {
@@ -116,29 +124,40 @@ const extractQueries = ({ caption = "", ocr = "", speech = "" }) => {
     }
   }
 
-  return unique([...querySet]).slice(0, 18);
+  return unique([...querySet]).slice(0, 10);
 };
 
+let broadDiscoveryCache = null;
+let broadDiscoveryExpiresAt = 0;
+
 const discoverSlices = async () => {
+  if (broadDiscoveryCache && Date.now() < broadDiscoveryExpiresAt) {
+    return broadDiscoveryCache;
+  }
+
   const slices = [
     ["movie", { sort_by: "popularity.desc", region: "IN" }],
     ["movie", { sort_by: "vote_count.desc", region: "IN", vote_count_gte: 50 }],
-    ["movie", { sort_by: "vote_average.desc", region: "IN", vote_count_gte: 250 }],
     ["movie", { sort_by: "popularity.desc", with_original_language: "hi", region: "IN" }],
     ["tv", { sort_by: "popularity.desc", region: "IN" }],
     ["tv", { sort_by: "vote_count.desc", region: "IN", vote_count_gte: 50 }],
-    ["tv", { sort_by: "vote_average.desc", region: "IN", vote_count_gte: 100 }],
     ["tv", { sort_by: "popularity.desc", with_original_language: "hi", region: "IN" }],
   ];
-  const pages = Math.max(1, Math.min(3, Number(process.env.SCENE_FINDER_DISCOVERY_PAGES || 2)));
-  const tasks = slices.flatMap(([type, baseParams]) => Array.from({ length: pages }, (_, i) => ({ type, baseParams, page: i + 1 })));
-  const concurrency = Math.max(2, Math.min(6, Number(process.env.SCENE_FINDER_DISCOVERY_CONCURRENCY || 4)));
+
+  const pages = Math.max(1, Math.min(2, Number(process.env.SCENE_FINDER_DISCOVERY_PAGES || 1)));
+  const tasks = slices.flatMap(([type, baseParams]) =>
+    Array.from({ length: pages }, (_, i) => ({ type, baseParams, page: i + 1 }))
+  );
+
+  const concurrency = Math.max(3, Math.min(6, Number(process.env.SCENE_FINDER_DISCOVERY_CONCURRENCY || 6)));
   const output = [];
 
   for (let i = 0; i < tasks.length; i += concurrency) {
     const results = await Promise.all(tasks.slice(i, i + concurrency).map(async ({ type, baseParams, page }) => {
       try {
-        const data = await request(`/discover/${type}`, { ...baseParams, language: "en-US", include_adult: false, include_video: false, page });
+        const data = await request(`/discover/${type}`, {
+          ...baseParams, language: "en-US", include_adult: false, include_video: false, page
+        });
         return (data.results || []).map(item => toCandidate({ ...item, contentType: type })).filter(Boolean);
       } catch (error) {
         console.error(`Scene discovery ${type} slice failed:`, error.message);
@@ -147,7 +166,10 @@ const discoverSlices = async () => {
     }));
     output.push(...results.flat());
   }
-  return output;
+
+  broadDiscoveryCache = dedupe(output);
+  broadDiscoveryExpiresAt = Date.now() + Math.max(60, Number(process.env.SCENE_FINDER_DISCOVERY_CACHE_SECONDS || 900)) * 1000;
+  return broadDiscoveryCache;
 };
 
 const tokenSimilarity = (a, b) => {
@@ -181,41 +203,63 @@ const rankCandidate = (candidate, queries) => {
 const discoverSceneCandidates = async ({ caption = "", ocrText = "", speechText = "" }) => {
   const queries = extractQueries({ caption, ocr: ocrText, speech: speechText });
   const searched = [];
-  const searchConcurrency = Math.max(1, Math.min(4, Number(process.env.SCENE_FINDER_SEARCH_CONCURRENCY || 3)));
+  const searchConcurrency = Math.max(2, Math.min(6, Number(process.env.SCENE_FINDER_SEARCH_CONCURRENCY || 6)));
 
   for (let index = 0; index < queries.length; index += searchConcurrency) {
     const results = await Promise.all(queries.slice(index, index + searchConcurrency).map(async query => {
       try {
-        const [multiEn, moviesEn, tvEn, multiHi, moviesHi, tvHi] = await Promise.all([
-          searchMulti(query, "en-US"), searchTyped(query, "movie", "en-US"), searchTyped(query, "tv", "en-US"),
-          searchMulti(query, "hi-IN"), searchTyped(query, "movie", "hi-IN"), searchTyped(query, "tv", "hi-IN"),
+        const [multiEn, multiHi] = await Promise.all([
+          searchMulti(query, "en-US"),
+          searchMulti(query, "hi-IN"),
         ]);
-        return [...multiEn, ...moviesEn, ...tvEn, ...multiHi, ...moviesHi, ...tvHi];
+
+        const merged = [...multiEn, ...multiHi];
+
+        // Typed searches are only used when multi-search returns too little.
+        if (merged.length < 3) {
+          const typed = await Promise.all([
+            searchTyped(query, "movie", "en-US"),
+            searchTyped(query, "tv", "en-US"),
+          ]);
+          merged.push(...typed.flat());
+        }
+
+        return merged;
       } catch (error) {
         console.error(`Scene search failed for "${query}":`, error.message);
         return [];
       }
     }));
+
     searched.push(...results.flat());
   }
 
-  const rankedSearch = dedupe(searched).map(candidate => ({ candidate, retrievalScore: rankCandidate(candidate, queries) })).sort((a,b) => b.retrievalScore - a.retrievalScore);
-  const searchLimit = Math.max(30, Number(process.env.SCENE_FINDER_SEARCH_CANDIDATES || 80));
+  const rankedSearch = dedupe(searched)
+    .map(candidate => ({ candidate, retrievalScore: rankCandidate(candidate, queries) }))
+    .sort((a, b) => b.retrievalScore - a.retrievalScore);
+
+  const searchLimit = Math.max(24, Number(process.env.SCENE_FINDER_SEARCH_CANDIDATES || 64));
   let candidates = rankedSearch.slice(0, searchLimit).map(item => item.candidate);
   const bestRetrieval = rankedSearch[0]?.retrievalScore || 0;
 
-  if (candidates.length < 40 || bestRetrieval < 0.58 || queries.length === 0) {
-    candidates = dedupe([...candidates, ...await discoverSlices()]);
+  if (candidates.length < 32 || bestRetrieval < 0.58 || queries.length === 0) {
+    const broad = await discoverSlices();
+    candidates = dedupe([...candidates, ...broad]);
   }
 
-  const maxCandidates = Math.max(80, Number(process.env.SCENE_FINDER_MAX_CANDIDATES || 220));
+  const maxCandidates = Math.max(80, Number(process.env.SCENE_FINDER_MAX_CANDIDATES || 180));
   candidates = candidates
     .map(candidate => ({ candidate, retrievalScore: rankCandidate(candidate, queries) }))
-    .sort((a,b) => b.retrievalScore - a.retrievalScore || (b.candidate.popularity || 0) - (a.candidate.popularity || 0))
+    .sort((a, b) => b.retrievalScore - a.retrievalScore || (b.candidate.popularity || 0) - (a.candidate.popularity || 0))
     .slice(0, maxCandidates)
     .map(item => item.candidate);
 
-  console.log("Scene Finder V4 discovery:", { queries, candidateCount: candidates.length, bestRetrieval: Number(bestRetrieval.toFixed(4)) });
+  console.log("Scene Finder V4 discovery:", {
+    queries,
+    candidateCount: candidates.length,
+    bestRetrieval: Number(bestRetrieval.toFixed(4))
+  });
+
   return { queries, candidates };
 };
 
