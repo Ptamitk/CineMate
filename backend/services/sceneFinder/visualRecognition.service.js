@@ -161,7 +161,8 @@ const analyzeArtworkSimilarity = async ({ frameFiles = [], candidateArtwork = []
         const topScores = similarities.slice(0, 3);
         if (!topScores.length) continue;
         const averageTopScore = topScores.reduce((sum, value) => sum + value, 0) / topScores.length;
-        const matchedIndexes = frameScores.map((score, i) => score >= 0.72 ? i : -1).filter(i => i >= 0);
+        const matchThreshold = contentType === "tv_episode" ? 0.60 : 0.68;
+        const matchedIndexes = frameScores.map((score, i) => score >= matchThreshold ? i : -1).filter(i => i >= 0);
 
         artworkResults.push({
           label: chunk[index].label || "",
