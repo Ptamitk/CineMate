@@ -1,4 +1,6 @@
 const fs = require("fs");
+const os = require("os");
+const path = require("path");
 let pipelinePromise = null;
 const MODEL_NAME = "Xenova/clip-vit-base-patch32";
 let imageEmbeddingPipelinePromise = null;
@@ -120,23 +122,34 @@ const analyzeArtworkSimilarity = async ({ frameFiles = [], candidateArtwork = []
     const artworkResults = [];
     const resolvedArtwork = [];
     const fetchConcurrency = Math.max(2, Math.min(8, Number(process.env.SCENE_FINDER_IMAGE_FETCH_CONCURRENCY || 6)));
+    const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "cinemate-artwork-"));
 
-    for (let start = 0; start < validArtwork.length; start += fetchConcurrency) {
-      const batch = validArtwork.slice(start, start + fetchConcurrency);
-      const resolved = await Promise.all(batch.map(async item => {
-        const image = await fetchRemoteImage(item.imageUrl);
-        return image ? { ...item, imageUrl: image } : null;
-      }));
-      resolvedArtwork.push(...resolved.filter(Boolean));
-    }
+    try {
+      for (let start = 0; start < validArtwork.length; start += fetchConcurrency) {
+        const batch = validArtwork.slice(start, start + fetchConcurrency);
+        const resolved = await Promise.all(batch.map(async (item, batchIndex) => {
+          const image = await fetchRemoteImage(item.imageUrl);
+          if (!image) return null;
 
-    if (!resolvedArtwork.length) return [];
+          // Transformers.js reliably handles local image files. Persist the
+          // already validated bytes instead of passing large data URLs into
+          // the embedding pipeline.
+          const base64 = image.split(",")[1];
+          if (!base64) return null;
+          const filePath = path.join(tempRoot, `artwork-${start + batchIndex}.jpg`);
+          await fs.promises.writeFile(filePath, Buffer.from(base64, "base64"));
+          return { ...item, imageUrl: filePath };
+        }));
+        resolvedArtwork.push(...resolved.filter(Boolean));
+      }
 
-    const chunkSize = Math.max(4, Math.min(24, Number(process.env.SCENE_FINDER_ARTWORK_EMBED_BATCH || 16)));
+      if (!resolvedArtwork.length) return [];
 
-    for (let start = 0; start < resolvedArtwork.length; start += chunkSize) {
-      const chunk = resolvedArtwork.slice(start, start + chunkSize);
-      const embeddings = await extractImageEmbeddings(chunk.map(item => item.imageUrl));
+      const chunkSize = Math.max(4, Math.min(24, Number(process.env.SCENE_FINDER_ARTWORK_EMBED_BATCH || 16)));
+
+      for (let start = 0; start < resolvedArtwork.length; start += chunkSize) {
+        const chunk = resolvedArtwork.slice(start, start + chunkSize);
+        const embeddings = await extractImageEmbeddings(chunk.map(item => item.imageUrl));
 
       for (let index = 0; index < chunk.length; index += 1) {
         const artworkEmbedding = embeddings[index];
@@ -163,7 +176,10 @@ const analyzeArtworkSimilarity = async ({ frameFiles = [], candidateArtwork = []
         });
       }
     }
-    return artworkResults.sort((a, b) => b.imageSimilarity - a.imageSimilarity);
+      return artworkResults.sort((a, b) => b.imageSimilarity - a.imageSimilarity);
+    } finally {
+      await fs.promises.rm(tempRoot, { recursive: true, force: true }).catch(() => {});
+    }
   } catch (error) {
     console.error("Artwork similarity analysis failed:", error.message);
     return [];
