@@ -134,9 +134,11 @@ const analyzeArtworkSimilarity = async ({ frameFiles = [], candidateArtwork = []
           // Transformers.js reliably handles local image files. Persist the
           // already validated bytes instead of passing large data URLs into
           // the embedding pipeline.
-          const base64 = image.split(",")[1];
+          const [header, base64] = image.split(",");
           if (!base64) return null;
-          const filePath = path.join(tempRoot, `artwork-${start + batchIndex}.jpg`);
+          const mime = (header.match(/^data:([^;]+);/i)?.[1] || "image/jpeg").toLowerCase();
+          const extension = mime.includes("webp") ? "webp" : mime.includes("png") ? "png" : "jpg";
+          const filePath = path.join(tempRoot, `artwork-${start + batchIndex}.${extension}`);
           await fs.promises.writeFile(filePath, Buffer.from(base64, "base64"));
           return { ...item, imageUrl: filePath };
         }));
