@@ -45,11 +45,45 @@ const extractTextEvidence = ({caption="",ocrResults=[],speech=""}) => {
     item.count++; item.confidence=Math.max(item.confidence,Number(row.confidence||0)); item.frames.push(row.index); counts.set(key,item);
   }
   const stableRows=[...counts.values()].filter(x=>x.count>=2).sort((a,b)=>b.count-a.count);
+
+  // OCR engines often change one character or split a movie title differently
+  // between frames. Exact-row repetition alone therefore misses real titles.
+  // Build short n-gram consensus across DISTINCT frames so "Harry Potter" can
+  // survive OCR variation without trusting a single noisy frame.
+  const phraseStats = new Map();
+  for (const row of cleanOcrRows) {
+    const words = row.cleanedText.toLowerCase().split(/\s+/).filter(Boolean);
+    const seen = new Set();
+    for (let size = 2; size <= Math.min(5, words.length); size += 1) {
+      for (let start = 0; start + size <= words.length; start += 1) {
+        const phrase = words.slice(start, start + size).join(" ");
+        if (phrase.length < 4 || seen.has(phrase)) continue;
+        seen.add(phrase);
+        const item = phraseStats.get(phrase) || { text: phrase, frames: new Set(), confidence: 0 };
+        item.frames.add(row.index);
+        item.confidence = Math.max(item.confidence, Number(row.confidence || 0));
+        phraseStats.set(phrase, item);
+      }
+    }
+  }
+
+  const stablePhrases = [...phraseStats.values()]
+    .filter(item => item.frames.size >= 2)
+    .sort((a, b) => b.frames.size - a.frames.size || b.text.length - a.text.length)
+    .slice(0, 30)
+    .map(item => item.text);
+
+  const stableOcrParts = [
+    ...stableRows.map(x => x.text),
+    ...stablePhrases
+  ];
+
   return {
     caption:cleanText(caption),
     ocr:cleanOcrRows.map(r=>r.cleanedText).join("\n"),
-    stableOcr:stableRows.map(x=>x.text).join("\n"),
+    stableOcr:[...new Set(stableOcrParts)].join("\n"),
     stableOcrRows:stableRows,
+    stableOcrPhrases:stablePhrases,
     speech:cleanText(speech),
     ocrRows:cleanOcrRows,
   };
