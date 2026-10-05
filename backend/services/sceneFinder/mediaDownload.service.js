@@ -70,7 +70,9 @@ const downloadMediaFile = async (mediaUrl) => {
     throw new Error("Only HTTP(S) media URLs are supported.");
   }
 
-  await assertPublicHost(url.hostname);\n\n  const controller = new AbortController();
+  await assertPublicHost(url.hostname);
+
+  const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
     DOWNLOAD_TIMEOUT_MS
