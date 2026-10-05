@@ -59,7 +59,18 @@ const isUsefulQuery = value => {
   const letters = (text.match(/\p{L}/gu) || []).length;
   if (letters < 3) return false;
   const uniqueLetters = new Set(text.toLowerCase().replace(/[^\p{L}]/gu, "")).size;
-  return uniqueLetters >= 3;
+  if (uniqueLetters < 3) return false;
+
+  // OCR frequently captures subtitles. Treat obvious conversational lines as
+  // dialogue rather than titles; this is especially important for reels where
+  // subtitles occupy most frames.
+  if (words.length >= 3) {
+    const dialogueLead = /^(what|what's|who|who's|why|how|where|when|which|i|i'm|i've|you|your|we|they|he|she|do|did|does|are|is|can|could|would|will|please|look|listen)\b/i;
+    const dialoguePhrase = /\b(?:what's wrong|what are you|who are you|where are you|why are you|how are you|i don't know|i've seen|what do you|you know|come on)\b/i;
+    if (dialogueLead.test(text) || dialoguePhrase.test(text)) return false;
+  }
+
+  return true;
 };
 
 const toCandidate = item => {
