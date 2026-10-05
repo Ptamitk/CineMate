@@ -196,6 +196,11 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
       ep.average * 0.62 + ep.max * 0.18 + ep.temporalConsistency * 0.20
     );
 
+    const artworkOnlyConfidence = Math.max(
+      art.average * 0.62 + art.max * 0.38,
+      ep.average * 0.64 + ep.max * 0.36
+    );
+
     const labelScore =
       label.visualLabelScore * 0.58 +
       label.visualLabelMax * 0.17 +
@@ -240,7 +245,7 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
       (art.matchedFrames >= 2 && art.average >= 0.58 && art.max >= 0.66) ||
       (ep.matchedFrames >= 2 && ep.average >= 0.58 && ep.max >= 0.64);
     if (artworkRetrievalCorroborated) {
-      score = Math.max(score, Math.min(0.88, artworkScore * 1.08));
+      score = Math.max(score, Math.min(0.88, artworkScore * 1.08, artworkOnlyConfidence));
     }
     if (t.exact) score = Math.max(score, 0.92);
 
