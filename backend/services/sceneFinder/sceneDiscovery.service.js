@@ -194,17 +194,42 @@ const tokenSimilarity = (a, b) => {
 const rankCandidate = (candidate, queries) => {
   let titleScore = 0;
   let overviewScore = 0;
+
   for (const query of queries) {
     const q = normalize(query);
-    if (!q) continue;
+    const queryWords = q.split(" ").filter(word => word.length >= 2);
+    if (!q || queryWords.length === 0) continue;
+
     for (const name of [candidate.title, candidate.originalTitle]) {
       const n = normalize(name);
-      if (q === n) titleScore = Math.max(titleScore, 1);
-      else if (n.includes(q) || q.includes(n)) titleScore = Math.max(titleScore, 0.94);
-      else titleScore = Math.max(titleScore, tokenSimilarity(q, n) * 0.88);
+      const nameWords = n.split(" ").filter(word => word.length >= 2);
+
+      if (q === n) {
+        titleScore = Math.max(titleScore, 1);
+        continue;
+      }
+
+      // Long conversational phrases should not become near-exact titles just
+      // because a short title is contained inside them.
+      const containment = n.includes(q) || q.includes(n);
+      const lengthRatio = Math.min(queryWords.length, nameWords.length) /
+        Math.max(queryWords.length, nameWords.length);
+
+      if (containment && lengthRatio >= 0.5) {
+        titleScore = Math.max(titleScore, 0.94);
+      } else {
+        const similarity = tokenSimilarity(q, n);
+        // Require meaningful token coverage for multi-word queries.
+        titleScore = Math.max(
+          titleScore,
+          similarity * (queryWords.length >= 3 ? 0.78 : 0.88)
+        );
+      }
     }
+
     overviewScore = Math.max(overviewScore, tokenSimilarity(q, candidate.overview) * 0.45);
   }
+
   return titleScore * 0.82 +
     overviewScore * 0.05 +
     Math.min(1, candidate.popularity / 100) * 0.06 +
