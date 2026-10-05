@@ -298,7 +298,7 @@ const SceneFinder = () => {
               <Sparkles size={13} />
               CineMate Scene Finder
               <span className="ml-1 h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            </div>
+            </motion.div>
 
             <motion.h1 initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.65 }} className="mt-7 text-6xl font-semibold leading-[0.95] tracking-[-0.045em] sm:text-7xl lg:text-[5.5rem]">
               Find the movie or show
