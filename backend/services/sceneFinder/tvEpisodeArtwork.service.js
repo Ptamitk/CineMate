@@ -49,7 +49,7 @@ const getEpisodeArtwork = async (candidate) => {
     const seasons = (details.seasons || [])
       .filter((season) => Number(season.season_number) > 0)
       .sort((a, b) => Number(b.episode_count || 0) - Number(a.episode_count || 0))
-      .slice(0, Math.max(1, Number(process.env.SCENE_FINDER_EPISODE_SEASONS || 8)));
+      .slice(0, Math.max(1, Number(process.env.SCENE_FINDER_EPISODE_SEASONS || 12)));
 
     const concurrency = Math.max(
       2,
@@ -93,7 +93,7 @@ const getEpisodeArtwork = async (candidate) => {
 
     const limited = episodes.slice(
       0,
-      Math.max(20, Number(process.env.SCENE_FINDER_MAX_EPISODE_STILLS || 180))
+      Math.max(40, Number(process.env.SCENE_FINDER_MAX_EPISODE_STILLS || 300))
     );
 
     cache.set(key, limited);
