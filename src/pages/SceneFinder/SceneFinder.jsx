@@ -19,17 +19,17 @@ const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 
 const stages = [
-  { icon: Camera, title: "Scanning frames", text: "Sampling the clip for useful visual evidence." },
-  { icon: Search, title: "Reading clues", text: "Checking OCR, dialogue and title signals." },
-  { icon: Film, title: "Matching visuals", text: "Comparing frames with movie and TV artwork." },
-  { icon: Sparkles, title: "Cross-checking", text: "Ranking candidates and rejecting weak matches." },
+  { icon: Camera, title: "Scanning", text: "Sampling useful frames from your clip." },
+  { icon: Search, title: "Reading clues", text: "Combining OCR, dialogue and metadata." },
+  { icon: Film, title: "Visual match", text: "Comparing scene frames with cinematic artwork." },
+  { icon: Sparkles, title: "Ranking", text: "Cross-checking movie and TV candidates." },
 ];
 
 const signals = [
-  ["OCR", "Subtitles, title cards and visible text"],
-  ["Dialogue", "Speech and recognizable lines"],
-  ["Visual", "Multiple frames from the actual scene"],
-  ["Artwork", "Movie, series and episode imagery"],
+  ["OCR", "Reads subtitles, title cards and visible text."],
+  ["Dialogue", "Uses speech as an independent clue."],
+  ["Visual", "Compares multiple frames from the actual scene."],
+  ["Artwork", "Cross-checks movie, series and episode imagery."],
 ];
 
 const getAuthToken = () => {
@@ -59,9 +59,7 @@ const normalizeResult = (result) => ({
 const formatTimestamp = (value) => {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   const total = Math.max(0, Math.round(value));
-  const minutes = Math.floor(total / 60);
-  const seconds = String(total % 60).padStart(2, "0");
-  return `${minutes}:${seconds}`;
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 };
 
 const SceneFinder = () => {
@@ -276,178 +274,164 @@ const SceneFinder = () => {
   const timestamp = formatTimestamp(result?.timestamp);
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#050505] px-4 pb-24 pt-28 text-white sm:px-8 lg:px-10">
-      <div className="mx-auto max-w-[1500px]">
-        <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[#090909] shadow-2xl">
-          <div className="pointer-events-none absolute -left-32 top-0 h-[32rem] w-[32rem] rounded-full bg-white/[0.045] blur-[130px]" />
-          <div className="pointer-events-none absolute -bottom-48 right-0 h-[32rem] w-[32rem] rounded-full bg-white/[0.035] blur-[140px]" />
+    <main className="min-h-screen bg-[#050505] px-4 pb-24 pt-28 text-white sm:px-8 lg:px-10">
+      <div className="mx-auto max-w-[1600px]">
+        <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.025] px-5 py-12 shadow-2xl sm:px-10 sm:py-16 lg:px-16 lg:py-20">
+          <div className="pointer-events-none absolute -left-40 -top-40 h-96 w-96 rounded-full bg-white/[0.055] blur-[120px]" />
+          <div className="pointer-events-none absolute -bottom-40 -right-20 h-[30rem] w-[30rem] rounded-full bg-white/[0.035] blur-[130px]" />
 
-          <div className="relative grid lg:min-h-[650px] lg:grid-cols-[1fr_0.88fr]">
-            <div className="flex flex-col justify-center px-6 py-14 sm:px-10 lg:px-16 lg:py-20">
-              <div className="flex w-fit items-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-3.5 py-2 text-[10px] font-medium uppercase tracking-[0.2em] text-white/45">
-                <Sparkles size={13} />
-                CineMate Intelligence
-                <span className="ml-1 h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              </div>
-
-              <h1 className="mt-7 max-w-3xl text-5xl font-semibold leading-[0.94] tracking-[-0.045em] sm:text-6xl lg:text-[5.6rem]">
-                What movie is
-                <span className="block text-white/30">this scene from?</span>
-              </h1>
-
-              <p className="mt-7 max-w-xl text-sm leading-7 text-white/40 sm:text-base">
-                Give CineMate a scene. It searches across visual frames, dialogue,
-                on-screen text and cinematic artwork to find the strongest movie or
-                TV match.
-              </p>
-
-              <div className="mt-8 flex flex-wrap gap-2">
-                {["Movies", "TV Shows", "Reels", "Video URLs"].map((item) => (
-                  <span
-                    key={item}
-                    className="rounded-full border border-white/10 bg-white/[0.025] px-3 py-1.5 text-[10px] text-white/35"
-                  >
-                    {item}
-                  </span>
-                ))}
-              </div>
+          <div className="relative mx-auto max-w-5xl text-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[10px] uppercase tracking-[0.22em] text-white/45">
+              <Sparkles size={13} />
+              CineMate Scene Finder
+              <span className="ml-1 h-1.5 w-1.5 rounded-full bg-emerald-400" />
             </div>
 
-            <div className="relative flex items-center border-t border-white/10 bg-black/30 p-4 sm:p-7 lg:border-l lg:border-t-0 lg:p-10">
-              <form
-                onSubmit={submit}
-                className="w-full rounded-[1.75rem] border border-white/10 bg-[#0b0b0b]/90 p-2 shadow-[0_30px_100px_rgba(0,0,0,0.55)] backdrop-blur-2xl"
-              >
-                <div className="rounded-[1.35rem] border border-white/[0.07] bg-white/[0.018] p-5 sm:p-6">
-                  <div className="mb-5">
-                    <p className="text-[10px] uppercase tracking-[0.22em] text-white/25">
-                      Scene input
-                    </p>
-                    <h2 className="mt-2 text-xl font-semibold">Start with a clip</h2>
-                  </div>
+            <h1 className="mt-7 text-5xl font-semibold leading-[0.95] tracking-[-0.045em] sm:text-6xl lg:text-7xl">
+              Find the movie or show
+              <span className="block text-white/30">behind any scene.</span>
+            </h1>
 
-                  <div className="rounded-2xl border border-white/10 bg-black/40 px-4">
-                    <div className="flex items-center gap-3">
-                      <Link2 size={17} className="shrink-0 text-white/25" />
-                      <input
-                        value={url}
-                        onChange={(e) => {
-                          setUrl(e.target.value);
-                          if (e.target.value) {
-                            setVideo(null);
-                            if (fileRef.current) fileRef.current.value = "";
-                          }
-                          setError("");
-                        }}
-                        disabled={Boolean(video) || searching}
-                        placeholder="Paste a public video or Reel URL"
-                        className="min-w-0 flex-1 bg-transparent py-4 text-sm outline-none placeholder:text-white/20"
-                      />
-                      {url && !searching && (
-                        <button
-                          type="button"
-                          onClick={() => setUrl("")}
-                          className="text-white/25 transition hover:text-white"
-                          aria-label="Clear URL"
-                        >
-                          <X size={16} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
+            <p className="mx-auto mt-6 max-w-2xl text-sm leading-7 text-white/40 sm:text-base">
+              Upload a clip or paste a public video/Reel URL. CineMate combines
+              visual frames, dialogue, on-screen text and cinematic artwork to find
+              the strongest match.
+            </p>
 
-                  <div className="my-4 flex items-center gap-3">
-                    <span className="h-px flex-1 bg-white/10" />
-                    <span className="text-[9px] uppercase tracking-[0.28em] text-white/20">or</span>
-                    <span className="h-px flex-1 bg-white/10" />
-                  </div>
+            <div className="mt-7 flex flex-wrap justify-center gap-2">
+              {["Movies", "TV Shows", "Instagram Reels", "Video URLs"].map((item) => (
+                <span
+                  key={item}
+                  className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[10px] text-white/35"
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
 
+            <form
+              onSubmit={submit}
+              className="mx-auto mt-10 max-w-3xl rounded-3xl border border-white/10 bg-black/45 p-2 text-left shadow-[0_30px_100px_rgba(0,0,0,0.45)] backdrop-blur-xl"
+            >
+              <div className="rounded-[1.35rem] border border-white/[0.06] bg-white/[0.018] p-4 sm:p-5">
+                <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/35 px-4">
+                  <Link2 size={17} className="shrink-0 text-white/30" />
                   <input
-                    ref={fileRef}
-                    type="file"
-                    accept="video/mp4,video/webm,video/quicktime,video/x-matroska"
-                    className="hidden"
-                    onChange={(e) => selectVideo(e.target.files?.[0])}
+                    value={url}
+                    onChange={(e) => {
+                      setUrl(e.target.value);
+                      if (e.target.value) {
+                        setVideo(null);
+                        if (fileRef.current) fileRef.current.value = "";
+                      }
+                      setError("");
+                    }}
+                    disabled={Boolean(video) || searching}
+                    placeholder="Paste Instagram Reel or public video URL..."
+                    className="min-w-0 flex-1 bg-transparent py-4 text-sm outline-none placeholder:text-white/20 sm:text-base"
+                    aria-label="Video or Reel URL"
                   />
-
-                  {video ? (
-                    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-black">
-                        <Film size={18} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-white/80">{video.name}</p>
-                        <p className="mt-1 text-[10px] text-white/30">
-                          {(video.size / 1024 / 1024).toFixed(1)} MB · Ready to analyze
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setVideo(null);
-                          if (fileRef.current) fileRef.current.value = "";
-                        }}
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 text-white/30 hover:text-white"
-                        aria-label="Remove video"
-                      >
-                        <X size={15} />
-                      </button>
-                    </div>
-                  ) : (
+                  {url && !searching && (
                     <button
                       type="button"
-                      onClick={() => fileRef.current?.click()}
-                      disabled={searching}
-                      className="group flex w-full items-center justify-between rounded-2xl border border-dashed border-white/10 bg-white/[0.015] px-4 py-4 text-left transition hover:border-white/25 hover:bg-white/[0.035] disabled:opacity-40"
+                      onClick={() => setUrl("")}
+                      className="text-white/25 transition hover:text-white"
+                      aria-label="Clear URL"
                     >
-                      <span className="flex items-center gap-3">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-black">
-                          <Upload size={16} className="text-white/50" />
-                        </span>
-                        <span>
-                          <span className="block text-sm text-white/65">Upload a video</span>
-                          <span className="mt-1 block text-[10px] text-white/25">MP4, WebM, MOV or MKV · max 100 MB</span>
-                        </span>
-                      </span>
-                      <ArrowRight size={15} className="text-white/20 transition group-hover:translate-x-1 group-hover:text-white/60" />
+                      <X size={16} />
                     </button>
                   )}
-
-                  <button
-                    type="submit"
-                    disabled={searching || (!url.trim() && !video)}
-                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-5 py-4 text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_18px_55px_rgba(255,255,255,0.14)] disabled:cursor-not-allowed disabled:opacity-35"
-                  >
-                    {searching ? (
-                      <>
-                        <Loader2 size={17} className="animate-spin" />
-                        Finding your scene...
-                      </>
-                    ) : (
-                      <>
-                        Find this scene
-                        <ArrowRight size={17} />
-                      </>
-                    )}
-                  </button>
-
-                  <p className="mt-3 text-center text-[10px] text-white/20">
-                    Public URLs must be directly accessible by CineMate.
-                  </p>
                 </div>
-              </form>
-            </div>
+
+                <div className="my-4 flex items-center gap-3">
+                  <span className="h-px flex-1 bg-white/10" />
+                  <span className="text-[9px] uppercase tracking-[0.28em] text-white/20">or</span>
+                  <span className="h-px flex-1 bg-white/10" />
+                </div>
+
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="video/mp4,video/webm,video/quicktime,video/x-matroska"
+                  className="hidden"
+                  onChange={(e) => selectVideo(e.target.files?.[0])}
+                />
+
+                {video ? (
+                  <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-black">
+                      <Film size={17} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-white/75">{video.name}</p>
+                      <p className="mt-1 text-[10px] text-white/25">
+                        {(video.size / 1024 / 1024).toFixed(1)} MB · Ready
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVideo(null);
+                        if (fileRef.current) fileRef.current.value = "";
+                      }}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 text-white/30 transition hover:text-white"
+                      aria-label="Remove video"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={searching}
+                    className="group flex w-full items-center justify-between rounded-2xl border border-dashed border-white/10 bg-white/[0.018] px-4 py-4 text-left transition hover:border-white/20 hover:bg-white/[0.035] disabled:opacity-40"
+                  >
+                    <span className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-black">
+                        <Upload size={16} className="text-white/45" />
+                      </span>
+                      <span>
+                        <span className="block text-sm text-white/65">Upload a scene video</span>
+                        <span className="mt-1 block text-[10px] text-white/25">
+                          MP4, WebM, MOV or MKV · max 100 MB
+                        </span>
+                      </span>
+                    </span>
+                    <ArrowRight size={15} className="text-white/20 transition group-hover:translate-x-1 group-hover:text-white/60" />
+                  </button>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={searching || (!url.trim() && !video)}
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-5 py-4 text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_15px_45px_rgba(255,255,255,0.13)] disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  {searching ? (
+                    <>
+                      <Loader2 size={17} className="animate-spin" />
+                      Finding your scene...
+                    </>
+                  ) : (
+                    <>
+                      Identify Scene
+                      <ArrowRight size={17} />
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
 
           {error && (
-            <div className="relative mx-4 mb-4 rounded-2xl border border-red-400/20 bg-red-400/[0.05] px-4 py-3 text-sm text-red-300 sm:mx-7 lg:mx-10">
+            <div className="relative mx-auto mt-5 max-w-3xl rounded-2xl border border-red-400/20 bg-red-400/[0.05] px-4 py-3 text-sm text-red-300">
               {error}
             </div>
           )}
 
           {searching && (
-            <div className="relative border-t border-white/10 bg-black/25 px-5 py-5 sm:px-8 sm:py-6">
-              <div className="mx-auto flex max-w-5xl flex-col gap-5 sm:flex-row sm:items-center">
+            <div className="relative mx-auto mt-7 max-w-4xl rounded-3xl border border-white/10 bg-black/30 p-5 sm:p-6">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
                   <CurrentIcon size={19} className="animate-pulse" />
                 </div>
@@ -477,79 +461,64 @@ const SceneFinder = () => {
           )}
         </section>
 
-        <section className="mt-6 grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-          <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.02] p-6 sm:p-8">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.22em] text-white/25">How it searches</p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-tight">Four layers of evidence.</h2>
-              </div>
-              <Zap size={19} className="text-white/30" />
+        <section className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5 sm:p-7 lg:p-8">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.22em] text-white/25">Recognition engine</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight">Four layers of evidence.</h2>
             </div>
-
-            <div className="mt-7 grid gap-3 sm:grid-cols-2">
-              {signals.map(([title, text], index) => (
-                <div
-                  key={title}
-                  className="group rounded-2xl border border-white/10 bg-black/25 p-4 transition duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.035]"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{title}</span>
-                    <span className="text-[10px] text-white/15">0{index + 1}</span>
-                  </div>
-                  <p className="mt-2 text-xs leading-5 text-white/30">{text}</p>
-                </div>
-              ))}
+            <div className="flex items-center gap-2 text-[11px] text-white/25">
+              <Zap size={14} />
+              Cross-checked before a result is shown
             </div>
           </div>
 
-          <div className="relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-gradient-to-br from-white/[0.045] to-transparent p-6 sm:p-8">
-            <div className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-white/[0.04] blur-3xl" />
-            <p className="relative text-[10px] uppercase tracking-[0.22em] text-white/25">Designed for hard clips</p>
-            <h2 className="relative mt-2 text-2xl font-semibold tracking-tight">
-              No single clue decides the answer.
-            </h2>
-            <p className="relative mt-4 text-sm leading-6 text-white/35">
-              Weak OCR, noisy dialogue or a cropped frame can mislead a recognizer.
-              CineMate combines independent evidence and can return no confident match
-              instead of forcing a random title.
-            </p>
-            <div className="relative mt-7 flex items-center gap-2 text-xs text-white/40">
-              <CheckCircle2 size={16} className="text-emerald-300/70" />
-              Multi-signal verification
-            </div>
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {signals.map(([title, text], index) => (
+              <div
+                key={title}
+                className="group rounded-2xl border border-white/10 bg-black/25 p-4 transition duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.035]"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">{title}</span>
+                  <span className="text-[10px] text-white/15">0{index + 1}</span>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-white/30">{text}</p>
+              </div>
+            ))}
           </div>
         </section>
 
         {result && (
-          <section className="mt-6 overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#090909] shadow-2xl">
-            <div className="grid lg:grid-cols-[360px_1fr]">
-              <div className="relative min-h-[420px] bg-black">
+          <section className="mt-6 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.025] shadow-2xl">
+            <div className="grid lg:grid-cols-[330px_1fr]">
+              <div className="relative min-h-[390px] bg-black">
                 {result.image ? (
                   <img
                     src={result.image}
                     alt={result.title}
+                    loading="lazy"
                     className="absolute inset-0 h-full w-full object-cover"
                   />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-white/15">
-                    <Film size={48} />
+                    <Film size={46} />
                   </div>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/10 to-transparent" />
-                <div className="absolute bottom-5 left-5 flex items-center gap-2">
-                  <span className="rounded-full border border-white/10 bg-black/60 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] backdrop-blur-md">
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />
+                <div className="absolute bottom-5 left-5 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-white/10 bg-black/65 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] backdrop-blur-md">
                     {result.type === "tv" ? "TV Series" : "Movie"}
                   </span>
                   {timestamp && (
-                    <span className="rounded-full border border-white/10 bg-black/60 px-3 py-1.5 text-[10px] backdrop-blur-md">
+                    <span className="rounded-full border border-white/10 bg-black/65 px-3 py-1.5 text-[10px] backdrop-blur-md">
                       Scene {timestamp}
                     </span>
                   )}
                 </div>
               </div>
 
-              <div className="p-6 sm:p-9 lg:p-12">
+              <div className="p-6 sm:p-8 lg:p-10">
                 <div className="flex flex-wrap items-center gap-2">
                   {result.evidenceType && (
                     <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5 text-[10px] uppercase tracking-[0.15em] text-white/40">
@@ -563,9 +532,7 @@ const SceneFinder = () => {
                   )}
                 </div>
 
-                <h2 className="mt-5 max-w-3xl text-4xl font-semibold tracking-[-0.03em] sm:text-5xl">
-                  {result.title}
-                </h2>
+                <h2 className="mt-5 text-3xl font-semibold tracking-tight sm:text-4xl">{result.title}</h2>
 
                 {result.type === "tv" && (result.seasonNumber || result.episodeNumber) && (
                   <p className="mt-3 text-sm text-white/45">
@@ -577,12 +544,8 @@ const SceneFinder = () => {
                 <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-white/35">
                   <span>{result.year}</span>
                   {result.rating !== "—" && <span>★ {result.rating}</span>}
-                  {result.sceneScore !== null && (
-                    <span>Match {Math.round(result.sceneScore * 100)}%</span>
-                  )}
+                  {result.sceneScore !== null && <span>Match {Math.round(result.sceneScore * 100)}%</span>}
                 </div>
-
-                <div className="mt-9 h-px bg-white/10" />
 
                 <div className="mt-7 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
@@ -611,7 +574,8 @@ const SceneFinder = () => {
           </section>
         )}
 
-        <div className="mt-7 flex items-center justify-center text-[10px] uppercase tracking-[0.18em] text-white/15">
+        <div className="mt-7 flex items-center justify-center gap-2 text-[10px] uppercase tracking-[0.18em] text-white/15">
+          <CheckCircle2 size={13} />
           Scene Finder · Movie + TV recognition
         </div>
       </div>
