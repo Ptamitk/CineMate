@@ -4,6 +4,10 @@ const os = require("os");
 
 const { runFFmpeg } = require("./ffmpeg.service");
 const { getVideoDuration } = require("./videoDuration.service");
+const {
+  buildAdaptiveSamplingPlan,
+  pickRepresentativeFrames,
+} = require("./adaptiveFrameSampler.service");
 
 const MAX_VIDEO_DURATION_SECONDS = Math.max(
   30,
@@ -37,45 +41,37 @@ const extractFrames = async ({
       );
     }
 
-    const targetFrames = Math.min(
-      maxFrames,
-      Math.max(12, Math.ceil(duration / intervalSeconds))
-    );
-
-    const effectiveInterval = Math.max(
-      0.5,
-      Math.min(intervalSeconds, duration / targetFrames)
-    );
+    const plan = buildAdaptiveSamplingPlan({
+      durationSeconds: duration,
+      requestedInterval: intervalSeconds,
+      requestedMaxFrames: maxFrames,
+      requestedOcrFrames: ocrFrameCount,
+    });
 
     console.log(
-      `Scene Finder V4: duration=${duration.toFixed(2)}s frames=${targetFrames} interval=${effectiveInterval.toFixed(2)}s`
+      `Scene Finder adaptive extraction: strategy=${plan.strategy} duration=${duration.toFixed(2)}s sampleInterval=${plan.intervalSeconds.toFixed(2)}s totalFrames=${plan.targetFrames}`
     );
 
-    const outputPattern = path.join(
-      outputDirectory,
-      "frame-%04d.jpg"
-    );
+    const outputPattern = path.join(outputDirectory, "frame-%04d.jpg");
 
     await runFFmpeg([
       "-i",
       videoPath,
       "-vf",
-      `fps=1/${effectiveInterval}`,
+      `fps=1/${plan.intervalSeconds}`,
       "-q:v",
       "2",
       "-frames:v",
-      String(targetFrames),
+      String(plan.targetFrames),
       outputPattern,
     ]);
 
     const files = await fs.promises.readdir(outputDirectory);
-
     const frameFiles = files
       .filter((file) => /^frame-\d+\.jpg$/i.test(file))
       .sort(
         (a, b) =>
-          Number(a.match(/\d+/)?.[0] || 0) -
-          Number(b.match(/\d+/)?.[0] || 0)
+          Number(a.match(/\d+/)?.[0] || 0) - Number(b.match(/\d+/)?.[0] || 0)
       )
       .map((file) => path.join(outputDirectory, file));
 
@@ -83,34 +79,28 @@ const extractFrames = async ({
       throw new Error("No usable video frames were extracted.");
     }
 
-    const targetOcr = Math.min(ocrFrameCount, frameFiles.length);
-    const ocrFrameFiles = Array.from(
-      { length: targetOcr },
-      (_, index) => {
-        const position =
-          targetOcr === 1
-            ? 0
-            : Math.round(
-                (index * (frameFiles.length - 1)) /
-                  (targetOcr - 1)
-              );
+    const representativeFrames = pickRepresentativeFrames({
+      frameFiles,
+      durationSeconds: duration,
+      targetCount: plan.targetRepresentativeFrames,
+      strategy: plan.strategy,
+    });
 
-        return frameFiles[position];
-      }
-    );
+    const ocrFrameFiles = representativeFrames
+      .slice(0, plan.ocrFrameCount)
+      .map((frame) => frame.framePath);
 
     return {
       outputDirectory,
-      frameFiles,
+      frameFiles: representativeFrames.map((frame) => frame.framePath),
       ocrFrameFiles: [...new Set(ocrFrameFiles)],
-      totalFrames: frameFiles.length,
+      totalFrames: representativeFrames.length,
       selectedFrames: ocrFrameFiles.length,
+      frameMetadata: representativeFrames,
+      strategy: plan.strategy,
     };
   } catch (error) {
-    await fs.promises.rm(outputDirectory, {
-      recursive: true,
-      force: true,
-    }).catch(() => {});
+    await fs.promises.rm(outputDirectory, { recursive: true, force: true }).catch(() => {});
     throw error;
   }
 };
