@@ -1,38 +1,22 @@
-const {
-  analyzeSceneSignals,
-} = require("./sceneSignals.service");
-const {
-  findSceneCandidates,
-} = require("./sceneCandidate.service");
-const {
-  getCandidateArtwork,
-} = require("./tmdbArtwork.service");
-const {
-  analyzeArtworkSimilarity,
-} = require("./visualRecognition.service");
-const {
-  analyzeVisualFrames,
-} = require("./visualAnalysis.service");
-const {
-  selectUsefulFrames,
-} = require("./frameSelection.service");
+const { analyzeSceneSignals } = require("./sceneSignals.service");
+const { discoverSceneCandidates } = require("./sceneDiscovery.service");
+const { getCandidateArtwork } = require("./tmdbArtwork.service");
+const { getCandidateEpisodeArtwork } = require("./tvEpisodeArtwork.service");
+const { analyzeArtworkSimilarity } = require("./visualRecognition.service");
+const { selectUsefulFrames } = require("./frameSelection.service");
 
 const normalize = (value = "") =>
   String(value)
     .normalize("NFKC")
     .toLowerCase()
-    .replace(/[^\\p{L}\\p{N}\\s]/gu, " ")
-    .replace(/\\s+/g, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
     .trim();
 
 const tokens = (value = "") =>
-  new Set(
-    normalize(value)
-      .split(" ")
-      .filter((token) => token.length > 1)
-  );
+  new Set(normalize(value).split(" ").filter((token) => token.length > 1));
 
-const textSimilarity = (source, title, originalTitle) => {
+const titleSimilarity = (source, title, originalTitle) => {
   const sourceTokens = tokens(source);
   if (!sourceTokens.size) return 0;
 
@@ -41,12 +25,17 @@ const textSimilarity = (source, title, originalTitle) => {
       const candidateTokens = tokens(candidateTitle);
       if (!candidateTokens.size) return 0;
 
-      let overlap = 0;
-      for (const token of sourceTokens) {
-        if (candidateTokens.has(token)) overlap += 1;
-      }
+      const overlap = [...sourceTokens].filter((token) =>
+        candidateTokens.has(token)
+      ).length;
 
-      return overlap / Math.max(sourceTokens.size, candidateTokens.size);
+      const precision = overlap / sourceTokens.size;
+      const recall = overlap / candidateTokens.size;
+
+      return Math.max(
+        precision * 0.65 + recall * 0.35,
+        overlap === candidateTokens.size ? 0.9 : 0
+      );
     })
   );
 };
@@ -54,22 +43,19 @@ const textSimilarity = (source, title, originalTitle) => {
 const scoreTextEvidence = (candidate, caption, ocr, speech) => {
   const title = candidate.title || "";
   const original = candidate.originalTitle || "";
+  const captionScore = titleSimilarity(caption, title, original);
+  const ocrScore = titleSimilarity(ocr, title, original);
+  const speechScore = titleSimilarity(speech, title, original);
 
-  const captionScore = textSimilarity(caption, title, original);
-  const ocrScore = textSimilarity(ocr, title, original);
-  const speechScore = textSimilarity(speech, title, original);
-
-  const exact =
-    [caption, ocr, speech].some((text) => {
-      const source = normalize(text);
-      return source && [title, original].some(
-        (name) => source === normalize(name)
-      );
-    });
+  const exact = [caption, ocr, speech].some((text) => {
+    const source = normalize(text);
+    return source &&
+      [title, original].some((name) => source === normalize(name));
+  });
 
   const strongest = Math.max(captionScore, ocrScore, speechScore);
-  const independent =
-    [ocrScore, speechScore].filter((score) => score >= 0.55).length;
+  const independent = [captionScore, ocrScore, speechScore]
+    .filter((score) => score >= 0.58).length;
 
   return {
     captionScore,
@@ -82,35 +68,28 @@ const scoreTextEvidence = (candidate, caption, ocr, speech) => {
 };
 
 const aggregateArtwork = (matches, candidate) => {
-  const normalizedTitle = normalize(candidate.title);
-  const normalizedOriginal = normalize(candidate.originalTitle);
+  const title = normalize(candidate.title);
+  const original = normalize(candidate.originalTitle);
 
   const rows = matches.filter((item) => {
     const label = normalize(item.label);
-    return label === normalizedTitle || label === normalizedOriginal;
+    return label === title || label === original;
   });
 
-  if (!rows.length) {
-    return {
-      average: 0,
-      max: 0,
-      matchedFrames: 0,
-      bestImage: "",
-    };
-  }
+  if (!rows.length) return { average: 0, max: 0, matchedFrames: 0 };
 
   const similarities = rows
     .map((item) => Number(item.imageSimilarity || 0))
     .sort((a, b) => b - a);
 
   return {
-    average: similarities.slice(0, 3).reduce((sum, value) => sum + value, 0) /
+    average:
+      similarities.slice(0, 3).reduce((sum, value) => sum + value, 0) /
       Math.min(3, similarities.length),
-    max: Math.max(...similarities),
+    max: similarities[0] || 0,
     matchedFrames: Math.max(
       ...rows.map((item) => Number(item.imageFramesMatched || 0))
     ),
-    bestImage: rows[0]?.imageUrl || "",
   };
 };
 
@@ -127,18 +106,16 @@ const analyzeSceneEvidence = async ({
 
   const visualFrames = selectUsefulFrames({
     frameFiles,
-    maxFrames: 20,
-  });
-
-  const visualAnalysis = await analyzeVisualFrames({
-    frameFiles: visualFrames,
+    maxFrames: Math.max(
+      12,
+      Math.min(20, Number(process.env.SCENE_FINDER_VISUAL_FRAMES || 18))
+    ),
   });
 
   const candidateResult = await discoverSceneCandidates({
+    caption,
     ocrText: signals.ocr.text,
     speechText: signals.speech.text,
-    caption,
-    visualAnalysis,
   });
 
   const candidates = candidateResult?.candidates || [];
@@ -146,156 +123,191 @@ const analyzeSceneEvidence = async ({
   if (!candidates.length || !visualFrames.length) {
     return {
       signals,
-      visualAnalysis,
-      artworkSimilarityMatches: [],
       caption,
       queries: candidateResult?.queries || [],
       candidates: [],
       bestMatch: null,
+      artworkSimilarityMatches: [],
+      episodeSimilarityMatches: [],
     };
   }
 
-  console.log(
-    "Scene Finder V2 candidate pool:",
-    candidates.length
+  const artworkLimit = Math.min(
+    candidates.length,
+    Math.max(12, Number(process.env.SCENE_FINDER_ARTWORK_CANDIDATES || 42))
   );
 
   const artworkCandidates = await getCandidateArtwork(
     candidates,
+    artworkLimit
+  );
+
+  const tvCandidates = candidates.filter(
+    (candidate) => candidate.contentType === "tv"
+  );
+
+  const episodeArtwork = await getCandidateEpisodeArtwork(
+    tvCandidates,
     Math.min(
-      candidates.length,
-      Number(process.env.SCENE_FINDER_ARTWORK_CANDIDATES || 60)
+      tvCandidates.length,
+      Number(process.env.SCENE_FINDER_EPISODE_CANDIDATES || 8)
     )
   );
 
-  console.log(
-    "Scene Finder V2 artwork references:",
-    artworkCandidates.length
-  );
-
-  const artworkSimilarityMatches = await analyzeArtworkSimilarity({
-    frameFiles: selectUsefulFrames({
-      frameFiles: visualFrames,
-      maxFrames: 12,
-    }),
-    candidateArtwork: artworkCandidates,
+  const artworkFrames = selectUsefulFrames({
+    frameFiles: visualFrames,
+    maxFrames: Math.min(
+      12,
+      Number(process.env.SCENE_FINDER_ARTWORK_FRAMES || 12)
+    ),
   });
 
-  const scored = candidates.map((candidate) => {
-    const text = scoreTextEvidence(
-      candidate,
-      caption,
-      signals.ocr.text,
-      signals.speech.text
-    );
+  const [artworkSimilarityMatches, episodeSimilarityMatches] =
+    await Promise.all([
+      analyzeArtworkSimilarity({
+        frameFiles: artworkFrames,
+        candidateArtwork: artworkCandidates,
+      }),
+      analyzeArtworkSimilarity({
+        frameFiles: artworkFrames,
+        candidateArtwork: episodeArtwork,
+      }),
+    ]);
 
-    const artwork = aggregateArtwork(
-      artworkSimilarityMatches,
-      candidate
-    );
-
-    const textScore =
-      text.exact
-        ? 1
-        : text.captionScore * 0.25 +
-          text.ocrScore * 0.4 +
-          text.speechScore * 0.35;
-
-    const visualScore =
-      artwork.average * 0.55 +
-      artwork.max * 0.25 +
-      Math.min(1, artwork.matchedFrames / 4) * 0.20;
-
-    const corroborated =
-      text.exact ||
-      (text.independent >= 2 && text.strongest >= 0.55) ||
-      (
-        artwork.average >= 0.58 &&
-        artwork.max >= 0.68 &&
-        artwork.matchedFrames >= 2
+  const scored = candidates
+    .map((candidate) => {
+      const text = scoreTextEvidence(
+        candidate,
+        caption,
+        signals.ocr.text,
+        signals.speech.text
       );
 
-    let finalScore =
-      textScore * 0.55 +
-      visualScore * 0.45;
+      const artwork = aggregateArtwork(
+        artworkSimilarityMatches,
+        candidate
+      );
 
-    if (text.exact) finalScore = Math.max(finalScore, 0.98);
+      const episodeArtworkMatch = aggregateArtwork(
+        episodeSimilarityMatches,
+        candidate
+      );
 
-    if (!corroborated) {
-      finalScore = Math.min(finalScore, 0.58);
-    }
+      const textScore = text.exact
+        ? 1
+        : text.captionScore * 0.22 +
+          text.ocrScore * 0.43 +
+          text.speechScore * 0.35;
 
-    const confidence = Math.round(
-      Math.max(0, Math.min(0.99, finalScore)) * 100
-    );
+      const visualScore =
+        artwork.average * 0.34 +
+        artwork.max * 0.18 +
+        Math.min(1, artwork.matchedFrames / 4) * 0.12 +
+        episodeArtworkMatch.average * 0.20 +
+        episodeArtworkMatch.max * 0.10 +
+        Math.min(1, episodeArtworkMatch.matchedFrames / 3) * 0.06;
 
-    return {
-      candidate,
-      title: candidate.title,
-      contentId: candidate.contentId,
-      contentType: candidate.contentType,
-      releaseDate: candidate.releaseDate,
-      rating: candidate.rating,
-      image: candidate.image,
-      confidence,
-      sceneScore: Number(finalScore.toFixed(4)),
-      evidenceType: text.exact
-        ? "text-exact"
-        : artwork.average >= 0.58
-          ? "artwork-visual"
-          : text.independent >= 2
-            ? "text-multi-signal"
-            : text.strongest >= 0.55
-              ? "text"
-              : "none",
-      evidence: {
-        captionScore: Number(text.captionScore.toFixed(4)),
-        ocrScore: Number(text.ocrScore.toFixed(4)),
-        speechScore: Number(text.speechScore.toFixed(4)),
-        artworkAverage: Number(artwork.average.toFixed(4)),
-        artworkMax: Number(artwork.max.toFixed(4)),
-        artworkMatchedFrames: artwork.matchedFrames,
-      },
-    };
-  }).sort((a, b) => {
-    if (b.sceneScore !== a.sceneScore) {
-      return b.sceneScore - a.sceneScore;
-    }
-    return b.evidence.artworkMatchedFrames -
-      a.evidence.artworkMatchedFrames;
-  });
+      const corroborated =
+        text.exact ||
+        (text.independent >= 2 && text.strongest >= 0.58) ||
+        (artwork.average >= 0.56 &&
+          artwork.max >= 0.66 &&
+          artwork.matchedFrames >= 2) ||
+        (episodeArtworkMatch.average >= 0.56 &&
+          episodeArtworkMatch.max >= 0.66 &&
+          episodeArtworkMatch.matchedFrames >= 2);
+
+      let finalScore =
+        textScore * 0.55 +
+        visualScore * 0.45 +
+        Math.min(0.05, Number(candidate.popularity || 0) / 2000);
+
+      if (text.exact) finalScore = Math.max(finalScore, 0.985);
+      if (!corroborated) finalScore = Math.min(finalScore, 0.57);
+
+      return {
+        title: candidate.title,
+        contentId: candidate.contentId,
+        contentType: candidate.contentType,
+        releaseDate: candidate.releaseDate,
+        rating: candidate.rating,
+        image: candidate.image,
+        confidence: Math.round(Math.min(0.995, finalScore) * 100),
+        sceneScore: Number(Math.min(0.995, finalScore).toFixed(4)),
+        evidenceType: text.exact
+          ? "text-exact"
+          : episodeArtworkMatch.average >= 0.56
+            ? "episode-visual"
+            : artwork.average >= 0.56
+              ? "artwork-visual"
+              : text.independent >= 2
+                ? "text-multi-signal"
+                : text.strongest >= 0.58
+                  ? "text"
+                  : "none",
+        evidence: {
+          captionScore: Number(text.captionScore.toFixed(4)),
+          ocrScore: Number(text.ocrScore.toFixed(4)),
+          speechScore: Number(text.speechScore.toFixed(4)),
+          artworkAverage: Number(artwork.average.toFixed(4)),
+          artworkMax: Number(artwork.max.toFixed(4)),
+          artworkMatchedFrames: artwork.matchedFrames,
+          episodeArtworkAverage: Number(
+            episodeArtworkMatch.average.toFixed(4)
+          ),
+          episodeArtworkMax: Number(episodeArtworkMatch.max.toFixed(4)),
+          episodeArtworkMatchedFrames:
+            episodeArtworkMatch.matchedFrames,
+        },
+      };
+    })
+    .sort((a, b) => {
+      if (b.sceneScore !== a.sceneScore) {
+        return b.sceneScore - a.sceneScore;
+      }
+      return (
+        b.evidence.artworkMatchedFrames +
+        b.evidence.episodeArtworkMatchedFrames -
+        (a.evidence.artworkMatchedFrames +
+          a.evidence.episodeArtworkMatchedFrames)
+      );
+    });
 
   const best = scored[0] || null;
   const second = scored[1] || null;
-  const margin = best && second
-    ? best.sceneScore - second.sceneScore
-    : best?.sceneScore || 0;
+  const margin =
+    best && second
+      ? best.sceneScore - second.sceneScore
+      : best?.sceneScore || 0;
 
   const accepted =
-    best &&
-    (
-      best.evidenceType === "text-exact" ||
-      (
-        best.sceneScore >= 0.63 &&
+    Boolean(best) &&
+    (best.evidenceType === "text-exact" ||
+      (best.sceneScore >= 0.63 &&
         margin >= 0.045 &&
-        (
-          best.evidence.artworkMatchedFrames >= 2 ||\n          best.evidence.episodeArtworkMatchedFrames >= 2 ||
+        (best.evidence.artworkMatchedFrames >= 2 ||
+          best.evidence.episodeArtworkMatchedFrames >= 2 ||
           best.evidence.ocrScore >= 0.72 ||
-          best.evidence.speechScore >= 0.72
-        )
-      )
-    );
+          best.evidence.speechScore >= 0.72)));
 
-  console.log("Scene Finder V2 top candidates:", scored.slice(0, 8));
+  console.log(
+    "Scene Finder V3 ranking:",
+    scored.slice(0, 8).map((item) => ({
+      title: item.title,
+      score: item.sceneScore,
+      evidenceType: item.evidenceType,
+      evidence: item.evidence,
+    }))
+  );
 
   return {
     signals,
-    visualAnalysis,
-    artworkSimilarityMatches,
     caption,
     queries: candidateResult?.queries || [],
-    candidates: scored,\n    artworkSimilarityMatches,\n    episodeSimilarityMatches,
+    candidates: scored,
     bestMatch: accepted ? best : null,
+    artworkSimilarityMatches,
+    episodeSimilarityMatches,
   };
 };
 
