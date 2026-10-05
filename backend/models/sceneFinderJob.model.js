@@ -100,9 +100,29 @@ const sceneFinderJobSchema = new mongoose.Schema(
         default: null,
       },
 
+      accepted: {
+        type: Boolean,
+        default: false,
+      },
+
       evidenceType: {
         type: String,
         default: "",
+      },
+
+      episode: {
+        seasonNumber: { type: Number, default: null },
+        episodeNumber: { type: Number, default: null },
+        episodeName: { type: String, default: "" },
+      },
+
+      seasonNumber: { type: Number, default: null },
+      episodeNumber: { type: Number, default: null },
+      episodeName: { type: String, default: "" },
+
+      evidence: {
+        type: mongoose.Schema.Types.Mixed,
+        default: null,
       },
     },
 
