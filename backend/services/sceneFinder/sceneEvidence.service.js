@@ -258,10 +258,28 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
   const best = scored[0] || null;
   const second = scored[1] || null;
   const margin = best && second ? best.sceneScore - second.sceneScore : 0;
-  const accepted = Boolean(best) && (
-    (best.sceneScore >= 0.72 && margin >= 0.07) ||
-    (best.evidenceType === "text-exact" && best.sceneScore >= 0.92 && margin >= 0.035)
-  );
+  // A visual-only match must be genuinely strong. CLIP can be confidently
+  // wrong on visually similar frames, so a high relative label score alone
+  // is never enough to accept a title.
+  const visualAccepted = Boolean(best) &&
+    best.evidenceType === "visual" &&
+    best.sceneScore >= 0.72 &&
+    margin >= 0.07 &&
+    Number(best.evidence?.visualLabelScore || 0) >= 0.55 &&
+    Number(best.evidence?.visualLabelMatchedFrames || 0) >= 3 &&
+    Number(best.evidence?.visualLabelTemporalConsistency || 0) >= 0.30;
+
+  const corroboratedTextAccepted = Boolean(best) &&
+    best.evidenceType === "text-corroborated" &&
+    best.sceneScore >= 0.72 &&
+    margin >= 0.07;
+
+  const exactTextAccepted = Boolean(best) &&
+    best.evidenceType === "text-exact" &&
+    best.sceneScore >= 0.92 &&
+    margin >= 0.035;
+
+  const accepted = visualAccepted || corroboratedTextAccepted || exactTextAccepted;
 
   console.log("Scene Finder production ranking:", scored.slice(0, 8).map(x => ({
     title: x.title, score: x.sceneScore, evidenceType: x.evidenceType, episode: x.episode, evidence: x.evidence
