@@ -281,6 +281,33 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
 
   const accepted = visualAccepted || corroboratedTextAccepted || exactTextAccepted;
 
+  const rejectionReason = !best
+    ? "no-candidates"
+    : !accepted
+      ? best.sceneScore < 0.72
+        ? "best-score-below-threshold"
+        : margin < (best.evidenceType === "text-exact" ? 0.035 : 0.07)
+          ? "insufficient-margin"
+          : best.evidenceType === "visual" && (
+              Number(best.evidence?.visualLabelScore || 0) < 0.55 ||
+              Number(best.evidence?.visualLabelMatchedFrames || 0) < 3 ||
+              Number(best.evidence?.visualLabelTemporalConsistency || 0) < 0.30
+            )
+            ? "visual-corroboration-too-weak"
+            : "evidence-policy-rejected"
+      : "accepted";
+
+  console.log("Scene Finder production decision:", {
+    accepted,
+    bestTitle: best?.title || "",
+    bestScore: best?.sceneScore || 0,
+    margin: Number(margin.toFixed(4)),
+    reason: rejectionReason,
+    artworkMatches: artworkSimilarityMatches.length,
+    episodeArtworkMatches: episodeSimilarityMatches.length,
+    visualLabelMatches: visualLabelMatches.length,
+  });
+
   console.log("Scene Finder production ranking:", scored.slice(0, 8).map(x => ({
     title: x.title, score: x.sceneScore, evidenceType: x.evidenceType, episode: x.episode, evidence: x.evidence
   })));
