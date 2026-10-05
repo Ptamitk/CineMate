@@ -134,129 +134,69 @@ const analyzeArtworkSimilarity = async ({
   frameFiles = [],
   candidateArtwork = [],
 }) => {
-  if (
-    !Array.isArray(frameFiles) ||
-    !frameFiles.length ||
-    !Array.isArray(candidateArtwork) ||
-    !candidateArtwork.length
-  ) {
-    return [];
-  }
+  if (!Array.isArray(frameFiles) || !frameFiles.length) return [];
+  if (!Array.isArray(candidateArtwork) || !candidateArtwork.length) return [];
 
-  const validArtwork =
-    candidateArtwork.filter(
-      (item) =>
-        item?.label &&
-        item?.imageUrl
-    );
+  const validArtwork = candidateArtwork.filter(
+    (item) => item?.label && item?.imageUrl
+  );
 
-  if (!validArtwork.length) {
-    return [];
-  }
+  if (!validArtwork.length) return [];
 
   try {
-    /*
-     * Transformers.js accepts local paths as one batch and remote
-     * URLs as another. Keep the two input types separate.
-     */
-    const [
-      frameEmbeddings,
-      artworkEmbeddings,
-    ] = await Promise.all([
-      extractImageEmbeddings(
-        frameFiles
-      ),
-      extractImageEmbeddings(
-        validArtwork.map(
-          (item) => item.imageUrl
-        )
-      ),
-    ]);
+    const frameEmbeddings = await extractImageEmbeddings(frameFiles);
+    if (frameEmbeddings.length !== frameFiles.length) return [];
 
-    if (
-      frameEmbeddings.length !==
-        frameFiles.length ||
-      artworkEmbeddings.length !==
-        validArtwork.length
-    ) {
-      return [];
-    }
-
-    return validArtwork
-      .map((candidate, candidateIndex) => {
-        const similarities =
-          frameEmbeddings.map(
-            (frameEmbedding) =>
-              cosineSimilarity(
-                frameEmbedding,
-                artworkEmbeddings[
-                  candidateIndex
-                ]
-              )
-          );
-
-        const sorted =
-          [...similarities].sort(
-            (a, b) => b - a
-          );
-
-        const topCount =
-          similarities.filter(
-            (score) => score >= 0.72
-          ).length;
-
-        const topScores =
-          sorted.slice(
-            0,
-            Math.min(3, sorted.length)
-          );
-
-        const averageTopScore =
-          topScores.length
-            ? topScores.reduce(
-                (sum, score) =>
-                  sum + score,
-                0
-              ) / topScores.length
-            : 0;
-
-        return {
-          label: candidate.label,
-          imageSimilarity:
-            Number(
-              Math.max(
-                0,
-                Math.min(
-                  1,
-                  averageTopScore
-                )
-              ).toFixed(4)
-            ),
-          imageMaxSimilarity:
-            Number(
-              Math.max(
-                0,
-                Math.min(
-                  1,
-                  sorted[0] || 0
-                )
-              ).toFixed(4)
-            ),
-          imageFramesMatched:
-            topCount,
-        };
-      })
-      .sort(
-        (a, b) =>
-          b.imageSimilarity -
-          a.imageSimilarity
-      );
-  } catch (error) {
-    console.error(
-      "Artwork similarity analysis failed:",
-      error.message
+    const artworkResults = [];
+    const chunkSize = Math.max(
+      4,
+      Math.min(24, Number(process.env.SCENE_FINDER_ARTWORK_EMBED_BATCH || 16))
     );
 
+    for (let start = 0; start < validArtwork.length; start += chunkSize) {
+      const chunk = validArtwork.slice(start, start + chunkSize);
+      const embeddings = await extractImageEmbeddings(
+        chunk.map((item) => item.imageUrl)
+      );
+
+      for (let index = 0; index < chunk.length; index += 1) {
+        const artworkEmbedding = embeddings[index];
+        if (!artworkEmbedding) continue;
+
+        const similarities = frameEmbeddings
+          .map((frameEmbedding) =>
+            cosineSimilarity(frameEmbedding, artworkEmbedding)
+          )
+          .filter(Number.isFinite)
+          .sort((a, b) => b - a);
+
+        if (!similarities.length) continue;
+
+        const topScores = similarities.slice(0, 3);
+        const averageTopScore =
+          topScores.reduce((sum, score) => sum + score, 0) /
+          topScores.length;
+
+        artworkResults.push({
+          label: chunk[index].label,
+          contentId: chunk[index].contentId,
+          contentType: chunk[index].contentType,
+          imageSimilarity: Number(
+            Math.max(0, Math.min(1, averageTopScore)).toFixed(4)
+          ),
+          imageMaxSimilarity: Number(
+            Math.max(0, Math.min(1, similarities[0] || 0)).toFixed(4)
+          ),
+          imageFramesMatched: similarities.filter((score) => score >= 0.72).length,
+        });
+      }
+    }
+
+    return artworkResults.sort(
+      (a, b) => b.imageSimilarity - a.imageSimilarity
+    );
+  } catch (error) {
+    console.error("Artwork similarity analysis failed:", error.message);
     return [];
   }
 };
