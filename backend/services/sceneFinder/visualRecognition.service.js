@@ -111,7 +111,7 @@ const fetchRemoteImage = async (url) => {
   return promise;
 };
 
-const analyzeArtworkSimilarity = async ({ frameFiles = [], candidateArtwork = [] }) => {
+const analyzeArtworkSimilarity = async ({ frameFiles = [], candidateArtwork = [], frameTimestamps = {} }) => {
   if (!Array.isArray(frameFiles) || !frameFiles.length || !Array.isArray(candidateArtwork) || !candidateArtwork.length) return [];
   const validArtwork = candidateArtwork.filter(item => item?.imageUrl);
   if (!validArtwork.length) return [];
@@ -175,6 +175,7 @@ const analyzeArtworkSimilarity = async ({ frameFiles = [], candidateArtwork = []
           imageMaxSimilarity: Number(Math.max(0, Math.min(1, similarities[0] || 0)).toFixed(4)),
           imageFramesMatched: matchedIndexes.length,
           matchedFrameIndexes: matchedIndexes,
+          matchedFrameTimestamps: matchedIndexes.map(frameIndex => Number(frameTimestamps[frameFiles[frameIndex]] ?? frameIndex)).filter(Number.isFinite),
           temporalConsistency: Number(temporalConsistency(frameScores, matchThreshold).toFixed(4))
         });
       }
