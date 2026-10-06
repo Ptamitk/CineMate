@@ -23,7 +23,8 @@
     "multer": "^2.4.0",
     "nodemailer": "^10.0.10",
     "tesseract.js": "^7.0.0",
-    "wavefile": "^11.0.0"
+    "wavefile": "^11.0.0",
+    "bullmq": "^5.58.5"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
