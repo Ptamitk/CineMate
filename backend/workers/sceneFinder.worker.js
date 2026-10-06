@@ -461,6 +461,8 @@ const processSceneFinderJob = async (
           audioResult.audioPath,
         caption:
           normalizedCaption,
+        frameTimestamps:
+          frameResult.frameTimestamps || {},
       });
 
     console.log(
@@ -570,6 +572,8 @@ const processSceneFinderJob = async (
                 bestMatch.episode?.episodeName || "",
               evidence:
                 bestMatch.evidence || null,
+              sceneTimestamp:
+                bestMatch.sceneTimestamp || null,
             },
             error: "",
           },
