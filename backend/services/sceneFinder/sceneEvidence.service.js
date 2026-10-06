@@ -180,15 +180,20 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     };
   }
 
-  const artworkCandidates = await getCandidateArtwork(
-    candidates,
-    Math.min(candidates.length, Math.max(20, Number(process.env.SCENE_FINDER_ARTWORK_CANDIDATES || 80)))
+  const artworkCandidateLimit = Math.min(
+    candidates.length,
+    Math.max(20, Number(process.env.SCENE_FINDER_ARTWORK_CANDIDATES || 80))
   );
+  const episodeCandidateLimit = Number(
+    process.env.SCENE_FINDER_EPISODE_CANDIDATES || 16
+  );
+
+  const artworkCandidates = await getCandidateArtwork(candidates, artworkCandidateLimit);
 
   const tvCandidates = candidates.filter(x => x.contentType === "tv");
   const episodeArtwork = await getCandidateEpisodeArtwork(
     tvCandidates,
-    Math.min(tvCandidates.length, Number(process.env.SCENE_FINDER_EPISODE_CANDIDATES || 16))
+    Math.min(tvCandidates.length, episodeCandidateLimit)
   );
 
   const artworkFrames = selectUsefulFrames({
