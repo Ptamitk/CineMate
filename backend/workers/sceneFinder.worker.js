@@ -285,7 +285,8 @@ const canCleanupUploadedVideo = async (jobId) => {
 
 const processSceneFinderJob = async (
   jobId,
-  uploadedVideo = null
+  uploadedVideo = null,
+  { attemptsMade = 0, maxAttempts = 1 } = {}
 ) => {
   let frameDirectory = null;
   let audioDirectory = null;
@@ -621,41 +622,47 @@ const processSceneFinderJob = async (
       error.stack
     );
 
-    const failedJob =
+    const willRetry =
+      Number(attemptsMade) + 1 < Math.max(1, Number(maxAttempts));
+
+    const updatedFailure =
       await releaseSceneFinderJob(
         jobId,
         {
           $set: {
-            status: "failed",
-            error:
-              normalizeWorkerError(error),
+            status: willRetry ? "pending" : "failed",
+            error: willRetry
+              ? `Scene analysis failed; retrying (attempt ${Number(attemptsMade) + 1} of ${Number(maxAttempts)}).`
+              : normalizeWorkerError(error),
           },
         }
       );
 
-    if (failedJob) {
+    if (updatedFailure) {
       await emitSceneEvent(
-        failedJob.user,
+        updatedFailure.user,
         {
           type: "scene",
-          jobId:
-            failedJob._id?.toString(),
-          status:
-            failedJob.status,
-          result:
-            failedJob.result || null,
-          error:
-            failedJob.error,
-          updatedAt: failedJob.updatedAt,
+          jobId: updatedFailure._id?.toString(),
+          status: updatedFailure.status,
+          result: updatedFailure.result || null,
+          error: updatedFailure.error,
+          updatedAt: updatedFailure.updatedAt,
         }
       );
 
-      await sendTelegramFinalResult(
-        failedJob,
-        failedJob.status,
-        failedJob.result,
-        failedJob.error
-      );
+      if (!willRetry) {
+        await sendTelegramFinalResult(
+          updatedFailure,
+          updatedFailure.status,
+          updatedFailure.result,
+          updatedFailure.error
+        );
+      }
+    }
+
+    if (willRetry) {
+      throw error;
     }
   } finally {
     if (heartbeatTimer) {
