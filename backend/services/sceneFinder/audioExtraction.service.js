@@ -50,6 +50,7 @@ const MAX_AUDIO_BYTES = Math.max(
   )
 );
 
+try {
 await runFFmpeg([
   "-i",
   videoPath,
