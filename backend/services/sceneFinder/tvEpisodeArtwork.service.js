@@ -91,10 +91,22 @@ const getEpisodeArtwork = async (candidate) => {
       episodes.push(...results.flat());
     }
 
-    const limited = episodes.slice(
-      0,
-      Math.max(40, Number(process.env.SCENE_FINDER_MAX_EPISODE_STILLS || 300))
+    const maxStills = Math.max(
+      40,
+      Number(process.env.SCENE_FINDER_MAX_EPISODE_STILLS || 180)
     );
+
+    // Do not bias episode matching toward the first/highest-volume seasons.
+    // Spread stills across the available episode list so long-running shows
+    // remain searchable without exploding memory/API usage.
+    const limited = episodes.length <= maxStills
+      ? episodes
+      : Array.from({ length: maxStills }, (_, index) => {
+          const sourceIndex = Math.floor(
+            (index * (episodes.length - 1)) / (maxStills - 1)
+          );
+          return episodes[sourceIndex];
+        });
 
     cache.set(key, limited);
     return limited;
