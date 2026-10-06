@@ -67,7 +67,7 @@ const analyzeScene = async (req, res) => {
 
     try {
       // Queue processing so heavy Scene Finder jobs are bounded.
-      const queued = enqueueSceneFinderJob(
+      const queued = await enqueueSceneFinderJob(
         job._id.toString(),
         uploadedVideo
       );
