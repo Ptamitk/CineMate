@@ -96,10 +96,33 @@ console.log(
   telegramBot.result.username
 );
 
-  app.listen(PORT, () => {
-    console.log(
-      `CineMate server running on port ${PORT}`
-    );
+  const server = app.listen(PORT, () => {
+    console.log(`CineMate server running on port ${PORT}`);
+  });
+
+  const shutdown = async (signal) => {
+    console.log(`Received ${signal}; shutting down CineMate gracefully...`);
+    server.close(async () => {
+      try {
+        const { closeSceneFinderQueue } = require("./services/sceneFinder/sceneJobQueue.service");
+        await closeSceneFinderQueue();
+        process.exit(0);
+      } catch (error) {
+        console.error("Scene Finder shutdown error:", error.message);
+        process.exit(1);
+      }
+    });
+  };
+
+  process.once("SIGINT", () => shutdown("SIGINT"));
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
+
+  process.on("uncaughtException", (error) => {
+    console.error("Uncaught exception:", error);
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    console.error("Unhandled rejection:", reason);
   });
 };
 
