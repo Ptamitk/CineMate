@@ -120,6 +120,11 @@ const sceneFinderJobSchema = new mongoose.Schema(
       episodeNumber: { type: Number, default: null },
       episodeName: { type: String, default: "" },
 
+      sceneTimestamp: {
+        start: { type: Number, default: null },
+        end: { type: Number, default: null },
+      },
+
       evidence: {
         type: mongoose.Schema.Types.Mixed,
         default: null,
