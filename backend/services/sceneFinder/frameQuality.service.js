@@ -1,8 +1,8 @@
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 const estimateFrameQuality = ({
-  brightness = 0,
-  contrast = 0,
+  brightness = 0.5,
+  contrast = 0.5,
   duplicateRatio = 0,
   isTextHeavy = false,
   isDark = false,
@@ -55,6 +55,7 @@ const filterHighQualityFrames = (frames = []) => {
 };
 
 module.exports = {
+  clamp,
   estimateFrameQuality,
   filterHighQualityFrames,
 };

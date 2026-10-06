@@ -1,64 +1,98 @@
-const { runFFmpeg } = require("./ffmpeg.service");
+const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
-const parseFfmpegMetadata = (rawText = "") => {
-  const text = String(rawText || "");
+const parseFfmpegMetadata = (ffmpegOutput = '') => {
+  if (!ffmpegOutput || typeof ffmpegOutput !== 'string') {
+    return { valid: false, error: 'No FFmpeg output provided' };
+  }
 
-  const durationMatch = text.match(/Duration:\s*(\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)/i);
-  const videoMatch = text.match(/Stream #0:(\d+)(?:\([^\)]*\))?: Video: ([^,]+),\s*([^,]+),\s*(\d+)x(\d+)(?:,|\s)/i);
-  const audioMatch = text.match(/Stream #0:(\d+)(?:\([^\)]*\))?: Audio: ([^,]+)/i);
-  const frameRateMatch = text.match(/,\s*([0-9.]+)\s*(?:fps|tbr|tb r|tbc)/i);
+  try {
+    const durationMatch = ffmpegOutput.match(/Duration: ([\d:]+)/);
+    const videoMatch = ffmpegOutput.match(/Video: ([^,]+),\s*([^,]+),\s*(\d+)x(\d+)/);
+    const audioMatch = ffmpegOutput.match(/Audio: ([^,]+)/);
 
-  const duration = durationMatch
-    ? Number(durationMatch[1]) * 3600 + Number(durationMatch[2]) * 60 + Number(durationMatch[3])
-    : null;
+    if (!durationMatch || !videoMatch) {
+      return { valid: false, error: 'Missing duration or video stream' };
+    }
 
-  const width = videoMatch ? Number(videoMatch[4]) : null;
-  const height = videoMatch ? Number(videoMatch[5]) : null;
-  const codec = videoMatch ? videoMatch[2].trim() : null;
-  const fps = frameRateMatch ? Number(frameRateMatch[1]) : null;
-  const hasAudio = Boolean(audioMatch);
+    const [hours, minutes, seconds] = durationMatch[1].split(':').map(Number);
+    const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+    const width = Number(videoMatch[3]);
+    const height = Number(videoMatch[4]);
+    const codec = videoMatch[1].trim();
+    const pixelFormat = videoMatch[2].trim();
 
-  return {
-    duration,
-    width,
-    height,
-    fps,
-    codec,
-    audioPresent: hasAudio,
-    audioCodec: audioMatch ? audioMatch[2].trim() : null,
-    aspectRatio: width && height ? width / height : null,
-    orientation: width && height ? (width >= height ? "landscape" : "portrait") : null,
-    valid: Number.isFinite(duration) && duration > 0 && width > 0 && height > 0,
-  };
+    if (totalSeconds <= 0 || width < 320 || height < 180) {
+      return { valid: false, error: 'Invalid video dimensions or duration' };
+    }
+
+    return {
+      valid: true,
+      durationSeconds: Number(totalSeconds.toFixed(3)),
+      width,
+      height,
+      aspectRatio: Number((width / height).toFixed(3)),
+      codec,
+      pixelFormat,
+      audioPresent: Boolean(audioMatch),
+      audioCodec: audioMatch ? audioMatch[1].trim() : null,
+    };
+  } catch (error) {
+    return { valid: false, error: error.message };
+  }
 };
 
-const extractVideoMetadata = async (videoPath) => {
-  if (!videoPath) {
-    throw new Error("Video path is required.");
+const validateVideoFile = (filePath = '') => {
+  if (!filePath || typeof filePath !== 'string') {
+    return { valid: false, error: 'Invalid file path' };
   }
 
-  const result = await runFFmpeg(["-hide_banner", "-i", videoPath], { allowNonZeroExit: true });
-  const meta = parseFfmpegMetadata(result.stderr || result.stdout || "");
+  try {
+    if (!fs.existsSync(filePath)) {
+      return { valid: false, error: 'File does not exist' };
+    }
 
-  if (!meta.valid) {
-    throw new Error("Unsupported or unreadable video file.");
+    const stats = fs.statSync(filePath);
+    const maxSizeBytes = 5 * 1024 * 1024 * 1024; // 5GB
+    const minSizeBytes = 1024 * 100; // 100KB
+
+    if (stats.size < minSizeBytes || stats.size > maxSizeBytes) {
+      return { valid: false, error: `Invalid file size: ${stats.size} bytes` };
+    }
+
+    const ext = path.extname(filePath).toLowerCase();
+    const supportedFormats = ['.mp4', '.webm', '.mkv', '.mov', '.avi', '.flv', '.m4v'];
+    if (!supportedFormats.includes(ext)) {
+      return { valid: false, error: `Unsupported format: ${ext}` };
+    }
+
+    return { valid: true, filePath, fileSize: stats.size, format: ext };
+  } catch (error) {
+    return { valid: false, error: error.message };
   }
+};
 
-  return {
-    duration: Number(meta.duration),
-    width: Number(meta.width),
-    height: Number(meta.height),
-    fps: meta.fps ? Number(meta.fps) : null,
-    codec: meta.codec,
-    audioPresent: Boolean(meta.audioPresent),
-    audioCodec: meta.audioCodec,
-    aspectRatio: meta.aspectRatio,
-    orientation: meta.orientation,
-    valid: true,
-  };
+const probeVideoMetadata = (filePath = '') => {
+  const validation = validateVideoFile(filePath);
+  if (!validation.valid) return validation;
+
+  try {
+    const ffprobeCmd = `ffprobe -v error -show_format -show_streams "${filePath}" 2>&1`;
+    const output = execSync(ffprobeCmd, { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
+
+    const ffmpegCmd = `ffmpeg -i "${filePath}" 2>&1 | head -20`;
+    const ffmpegOutput = execSync(ffmpegCmd, { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }).catch(() => '');
+
+    const metadata = parseFfmpegMetadata(ffmpegOutput);
+    return metadata.valid ? { ...validation, ...metadata } : { ...validation, ...metadata };
+  } catch (error) {
+    return { ...validation, valid: false, error: `Probe failed: ${error.message}` };
+  }
 };
 
 module.exports = {
   parseFfmpegMetadata,
-  extractVideoMetadata,
+  validateVideoFile,
+  probeVideoMetadata,
 };

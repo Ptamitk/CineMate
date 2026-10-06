@@ -24,16 +24,16 @@ const TITLE_PREFIX_REJECTS = [
   /^reels?\b/i,
 ];
 
-const cleanSignal = (value = "") => {
-  return String(value || "")
-    .normalize("NFKC")
-    .replace(/[@#][\p{L}\p{N}_-]+/gu, " ")
-    .replace(/\b(?:fyp|viral|explore|reels?|instagram|follow|subscribe|share|comment|like|tag|watch till end|save this|dont forget)\b/gi, " ")
-    .replace(/\s+/g, " ")
+const cleanSignal = (value = '') => {
+  return String(value || '')
+    .normalize('NFKC')
+    .replace(/[@#][\p{L}\p{N}_-]+/gu, ' ')
+    .replace(/\b(?:fyp|viral|explore|reels?|instagram|follow|subscribe|share|comment|like|tag|watch till end|save this|dont forget)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 };
 
-const isDialogueLike = (value = "") => {
+const isDialogueLike = (value = '') => {
   const text = cleanSignal(value);
   if (!text || text.length > 180) return false;
 
@@ -49,7 +49,7 @@ const isDialogueLike = (value = "") => {
   return dialogueHit || startsLikeDialogue;
 };
 
-const isTitleCandidate = (value = "") => {
+const isTitleCandidate = (value = '') => {
   const text = cleanSignal(value);
   if (!text || text.length < 4 || text.length > 100) return false;
 
@@ -72,10 +72,10 @@ const hasStrongVisualSupport = (evidence = {}) => {
   return visual >= 0.45 || artwork >= 0.45 || scene >= 0.45;
 };
 
-const shouldRejectSpeechOnlyMatch = ({ bestMatch, evidence, speechText = "" } = {}) => {
+const shouldRejectSpeechOnlyMatch = ({ bestMatch, evidence, speechText = '' } = {}) => {
   if (!bestMatch || !bestMatch.evidenceType) return false;
 
-  const textEvidence = ["text-corroborated", "text-exact"].includes(bestMatch.evidenceType);
+  const textEvidence = ['text-corroborated', 'text-exact'].includes(bestMatch.evidenceType);
   if (!textEvidence) return false;
 
   if (!speechText || !isDialogueLike(speechText)) return false;
@@ -87,8 +87,8 @@ const shouldRejectWeakCandidate = ({
   score = 0,
   visualScore = 0,
   artworkAverage = 0,
-  evidenceText = "",
-  speechText = "",
+  evidenceText = '',
+  speechText = '',
 } = {}) => {
   const normalizedScore = Number(score || 0);
   const visual = Number(visualScore || 0);
