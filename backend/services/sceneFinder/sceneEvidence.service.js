@@ -505,9 +505,10 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
 
   console.log("Scene Finder production decision:", {
     accepted,
-    bestTitle: best?.title || "",
-    bestScore: best?.sceneScore || 0,
-    margin: Number(margin.toFixed(4)),
+    bestTitle: finalBest?.title || "",
+    bestScore: finalBest?.sceneScore || 0,
+    margin: Number(finalMargin.toFixed(4)),
+    recoveryUsed,
     reason: rejectionReason,
     artworkMatches: artworkSimilarityMatches.length,
     episodeArtworkMatches: episodeSimilarityMatches.length,
@@ -523,7 +524,7 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     caption,
     queries: candidateResult?.queries || [],
     candidates: scored,
-    bestMatch: accepted ? best : null,
+    bestMatch: finalBest,
     artworkSimilarityMatches,
     episodeSimilarityMatches,
     visualLabelMatches
