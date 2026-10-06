@@ -79,6 +79,8 @@ const downloadMediaFile = async (mediaUrl) => {
   );
 
   let response;
+  let outputDirectory = null;
+  let fileHandle = null;
 
   try {
     let currentUrl = url;
@@ -106,8 +108,6 @@ const downloadMediaFile = async (mediaUrl) => {
       throw new Error("Video download timed out.");
     }
     throw error;
-  } finally {
-    clearTimeout(timeout);
   }
 
   if (!response.ok) {
@@ -137,7 +137,7 @@ const downloadMediaFile = async (mediaUrl) => {
     throw new Error("Media download returned an empty response body.");
   }
 
-  const outputDirectory = await fs.promises.mkdtemp(
+  outputDirectory = await fs.promises.mkdtemp(
     path.join(os.tmpdir(), "cinemate-reel-")
   );
 
@@ -151,8 +151,6 @@ const downloadMediaFile = async (mediaUrl) => {
     outputDirectory,
     `scene-input${extension}`
   );
-
-  let fileHandle = null;
 
   try {
     fileHandle = await fs.promises.open(outputPath, "w");
@@ -203,6 +201,8 @@ const downloadMediaFile = async (mediaUrl) => {
     }).catch(() => {});
 
     throw error;
+  } finally {
+    clearTimeout(timeout);
   }
 };
 
