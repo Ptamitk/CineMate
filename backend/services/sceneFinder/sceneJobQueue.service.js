@@ -95,18 +95,15 @@ const initializeDistributedQueue = async () => {
       },
     });
 
+    const path = require("path");
+    const processorFile = path.join(
+      __dirname,
+      "../../workers/sceneFinder.processor.js"
+    );
+
     distributedWorker = new Worker(
       "cinemate-scene-finder",
-      async (job) => {
-        await processSceneFinderJob(
-          job.data.jobId,
-          job.data.uploadedVideo || null,
-          {
-            attemptsMade: Number(job.attemptsMade || 0),
-            maxAttempts: MAX_QUEUE_RETRIES,
-          }
-        );
-      },
+      processorFile,
       {
         connection,
         concurrency: MAX_CONCURRENT_JOBS,
