@@ -11,7 +11,7 @@ const aggregate = (matches, candidate) => {
     Number(item.contentId) === Number(candidate.contentId) &&
     item.contentType === candidate.contentType
   );
-  if (!rows.length) return { average: 0, max: 0, matchedFrames: 0, temporalConsistency: 0, bestEpisode: null };
+  if (!rows.length) return { average: 0, max: 0, matchedFrames: 0, temporalConsistency: 0, bestEpisode: null, matchedFrameTimestamps: [] };
 
   const scores = rows.map(x => Number(x.imageSimilarity || 0)).sort((a, b) => b - a);
   // Artwork similarity is a graded retrieval signal. Do not throw away
@@ -25,6 +25,7 @@ const aggregate = (matches, candidate) => {
     max: scores[0] || 0,
     matchedFrames: Math.max(0, ...strong.map(x => Number(x.imageFramesMatched || 0))),
     temporalConsistency: Math.max(0, ...rows.map(x => Number(x.temporalConsistency || 0))),
+    matchedFrameTimestamps: [...new Set(rows.flatMap(x => Array.isArray(x.matchedFrameTimestamps) ? x.matchedFrameTimestamps : []))].sort((a, b) => a - b),
     bestEpisode: rows.filter(x => x.seasonNumber)
       .sort((a, b) => Number(b.imageSimilarity || 0) - Number(a.imageSimilarity || 0))[0] || null
   };
@@ -64,7 +65,7 @@ const textEvidence = (candidate, text) => {
   return { captionScore, ocrScore, stableOcrScore, speechScore, captionExact, speechExact, stableOcrExact, exact, independent };
 };
 
-const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audioPath = null, caption = "" }) => {
+const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audioPath = null, caption = "", frameTimestamps = {} }) => {
   const signals = await analyzeSceneSignals({
     frameFiles: ocrFrameFiles.length ? ocrFrameFiles : frameFiles,
     audioPath
@@ -83,7 +84,10 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
 
   // Fast-path: when the evidence already contains an exact, strong title,
   // do not spend time on broad visual/episode analysis.
-  const fastText = [text.caption, text.stableOcr, text.speech]
+  // Speech is deliberately excluded from the exact fast path. A normal spoken
+  // sentence can exactly resemble a TMDB title and create a dangerous false
+  // positive before visual verification runs.
+  const fastText = [text.caption, text.stableOcr]
     .filter(Boolean)
     .join(" ");
   const fastCandidateResult = await discoverSceneCandidates({
@@ -97,10 +101,6 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     .filter(item => item.exact)
     .map(item => item.candidate);
 
-  const fastArtworkCandidates = fastCandidates.filter(candidate =>
-    exactFast.some(exact => exact.contentId === candidate.contentId && exact.contentType === candidate.contentType)
-  );
-
   if (exactFast.length === 1 && fastCandidates.length <= 20) {
     const candidate = exactFast[0];
     const result = {
@@ -109,6 +109,7 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
       sceneScore: 0.95,
       evidenceType: "text-exact",
       episode: null,
+      sceneTimestamp: null,
       evidence: {
         captionScore: 0,
         ocrScore: 1,
@@ -167,8 +168,8 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
   });
 
   const [artworkSimilarityMatches, episodeSimilarityMatches] = await Promise.all([
-    analyzeArtworkSimilarity({ frameFiles: artworkFrames, candidateArtwork: artworkCandidates }),
-    analyzeArtworkSimilarity({ frameFiles: artworkFrames, candidateArtwork: episodeArtwork })
+    analyzeArtworkSimilarity({ frameFiles: artworkFrames, candidateArtwork: artworkCandidates, frameTimestamps }),
+    analyzeArtworkSimilarity({ frameFiles: artworkFrames, candidateArtwork: episodeArtwork, frameTimestamps })
   ]);
 
   const artworkRankedIds = [...artworkSimilarityMatches]
@@ -265,6 +266,16 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     if (t.exact) score = Math.max(score, 0.92);
 
     const episode = ep.bestEpisode;
+    const matchedTimes = [...new Set([
+      ...(art.matchedFrameTimestamps || []),
+      ...(ep.matchedFrameTimestamps || [])
+    ])].filter(Number.isFinite).sort((a, b) => a - b);
+    const sceneTimestamp = matchedTimes.length
+      ? {
+          start: Number(matchedTimes[0].toFixed(3)),
+          end: Number(matchedTimes[matchedTimes.length - 1].toFixed(3))
+        }
+      : null;
 
     return {
       title: candidate.title,
@@ -281,6 +292,7 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
         episodeNumber: episode.episodeNumber,
         episodeName: episode.episodeName || ""
       } : null,
+      sceneTimestamp,
       evidence: {
         captionScore: Number(t.captionScore.toFixed(4)),
         ocrScore: Number(t.ocrScore.toFixed(4)),
