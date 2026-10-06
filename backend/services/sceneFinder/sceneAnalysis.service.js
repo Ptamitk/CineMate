@@ -5,6 +5,7 @@ const analyzeScene = async ({
   ocrFrameFiles = [],
   audioPath = null,
   caption = "",
+  frameTimestamps = {},
 }) => {
   console.log("Starting Scene Finder V2 analysis...");
 
@@ -13,6 +14,7 @@ const analyzeScene = async ({
     ocrFrameFiles,
     audioPath,
     caption,
+    frameTimestamps,
   });
 
   console.log("Scene Finder V2 analysis completed.");
