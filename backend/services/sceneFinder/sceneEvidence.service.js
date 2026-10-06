@@ -450,7 +450,8 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     corroboratedTextAccepted ||
     exactTextAccepted;
 
-  let finalBest = primaryAccepted ? best : null;\n  let finalMargin = margin;
+  let finalBest = primaryAccepted ? best : null;
+  let finalMargin = margin;
   let recoveryUsed = false;
 
   if (!finalBest) {
