@@ -88,6 +88,11 @@ const SceneFinder = () => {
   // Each analysis gets a unique run token. This prevents an older in-flight
   // poll response from overwriting the result of a newer analysis.
   const analysisRunRef = useRef(0);
+  const analysisStartedAtRef = useRef(0);
+  const MAX_ANALYSIS_WAIT_MS = Math.max(
+    60 * 1000,
+    Number(import.meta.env.VITE_SCENE_FINDER_MAX_WAIT_MS || 15 * 60 * 1000)
+  );
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -111,6 +116,17 @@ const SceneFinder = () => {
 
   const pollStatus = useCallback(async (id, token, runToken) => {
     if (runToken !== analysisRunRef.current) return;
+
+    if (
+      analysisStartedAtRef.current &&
+      Date.now() - analysisStartedAtRef.current > MAX_ANALYSIS_WAIT_MS
+    ) {
+      stopPolling();
+      setSearching(false);
+      setJobId(null);
+      setError("Scene analysis is taking too long. Please try the clip again later.");
+      return;
+    }
 
     try {
       const response = await fetch(
@@ -238,6 +254,7 @@ const SceneFinder = () => {
     stopPolling();
     setSearching(true);
     setStep(0);
+    analysisStartedAtRef.current = Date.now();
     setResult(null);
     setError("");
 
@@ -267,6 +284,8 @@ const SceneFinder = () => {
     } catch (e) {
       stopPolling();
       setSearching(false);
+      setJobId(null);
+      localStorage.removeItem("cinemate_scene_finder_job");
       setError(e.message || "Something went wrong while analyzing the scene.");
     }
   };
