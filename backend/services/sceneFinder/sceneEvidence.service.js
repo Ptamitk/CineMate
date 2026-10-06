@@ -217,6 +217,51 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     analyzeArtworkSimilarity({ frameFiles: artworkFrames, candidateArtwork: episodeArtwork, frameTimestamps })
   ]);
 
+  // The first pass already uses the expanded production limits above. Keep
+  // one lightweight recovery pass available for difficult scenes: it reuses
+  // OCR/Whisper/candidate discovery results and only expands visual retrieval.
+  const runVisualRecoveryPass = async () => {
+    if (!fallbackEnabled) return null;
+
+    const recoveryFrameCount = Math.max(
+      visualFrameLimit,
+      Math.min(24, Number(process.env.SCENE_FINDER_FALLBACK_VISUAL_FRAMES || 24))
+    );
+    const recoveryArtworkLimit = Math.min(
+      candidates.length,
+      Math.max(artworkCandidateLimit, Number(process.env.SCENE_FINDER_FALLBACK_ARTWORK_CANDIDATES || 120))
+    );
+    const recoveryEpisodeLimit = Math.min(
+      tvCandidates.length,
+      Math.max(episodeCandidateLimit, Number(process.env.SCENE_FINDER_FALLBACK_EPISODE_CANDIDATES || 32))
+    );
+
+    const recoveryFrames = selectUsefulFrames({ frameFiles, maxFrames: recoveryFrameCount });
+    if (!recoveryFrames.length) return null;
+
+    const recoveryArtwork = recoveryArtworkLimit > artworkCandidateLimit
+      ? await getCandidateArtwork(candidates, recoveryArtworkLimit)
+      : artworkCandidates;
+    const recoveryEpisodes = recoveryEpisodeLimit > episodeCandidateLimit
+      ? await getCandidateEpisodeArtwork(tvCandidates, recoveryEpisodeLimit)
+      : episodeArtwork;
+    const recoveryArtworkFrames = selectUsefulFrames({
+      frameFiles: recoveryFrames,
+      maxFrames: Math.min(18, recoveryFrameCount)
+    });
+
+    const [recoveryArtworkMatches, recoveryEpisodeMatches] = await Promise.all([
+      analyzeArtworkSimilarity({ frameFiles: recoveryArtworkFrames, candidateArtwork: recoveryArtwork, frameTimestamps }),
+      analyzeArtworkSimilarity({ frameFiles: recoveryArtworkFrames, candidateArtwork: recoveryEpisodes, frameTimestamps })
+    ]);
+
+    return {
+      recoveryFrames,
+      recoveryArtworkMatches,
+      recoveryEpisodeMatches
+    };
+  };
+
   const artworkRankedIds = [...artworkSimilarityMatches]
     .sort((a, b) => Number(b.imageSimilarity || 0) - Number(a.imageSimilarity || 0))
     .slice(0, 12)
