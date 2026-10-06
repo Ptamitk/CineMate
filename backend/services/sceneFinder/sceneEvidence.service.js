@@ -186,10 +186,17 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
 
   const artworkCandidateLimit = Math.min(
     candidates.length,
-    Math.max(20, Number(process.env.SCENE_FINDER_ARTWORK_CANDIDATES || 80))
+    Math.max(
+      20,
+      Number(
+        process.env.SCENE_FINDER_ARTWORK_CANDIDATES ||
+        (fallbackEnabled ? 96 : 80)
+      )
+    )
   );
   const episodeCandidateLimit = Number(
-    process.env.SCENE_FINDER_EPISODE_CANDIDATES || 16
+    process.env.SCENE_FINDER_EPISODE_CANDIDATES ||
+    (fallbackEnabled ? 24 : 16)
   );
 
   const artworkCandidates = await getCandidateArtwork(candidates, artworkCandidateLimit);
