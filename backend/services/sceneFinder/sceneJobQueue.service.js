@@ -52,11 +52,22 @@ const QUEUE_RECOVERY_BATCH_SIZE = Math.max(
   Number(process.env.SCENE_FINDER_QUEUE_RECOVERY_BATCH_SIZE || 50)
 );
 
-const getRedisConnection = () => ({
-  url: REDIS_URL,
-  maxRetriesPerRequest: null,
-  enableReadyCheck: true,
-});
+const getRedisConnection = () => {
+  const url = new URL(REDIS_URL);
+
+  return {
+    host: url.hostname,
+    port: Number(url.port || 6379),
+    username: decodeURIComponent(url.username || ""),
+    password: decodeURIComponent(url.password || ""),
+    db: url.pathname && url.pathname !== "/"
+      ? Number(url.pathname.slice(1))
+      : 0,
+    maxRetriesPerRequest: null,
+    enableReadyCheck: true,
+    ...(url.protocol === "rediss:" ? { tls: {} } : {}),
+  };
+};
 
 const initializeDistributedQueue = async () => {
   if (!USE_DISTRIBUTED_QUEUE || distributedQueueReady) return false;
