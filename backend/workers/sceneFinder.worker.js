@@ -294,6 +294,7 @@ const processSceneFinderJob = async (
   let heartbeatTimer = null;
   let heartbeatInFlight = false;
   let leaseLost = false;
+  let retryScheduled = false;
 
   let claimCompleted = false;
 
@@ -662,6 +663,7 @@ const processSceneFinderJob = async (
     }
 
     if (willRetry) {
+      retryScheduled = true;
       throw error;
     }
   } finally {
@@ -670,7 +672,7 @@ const processSceneFinderJob = async (
     }
 
     const safeToCleanupUpload =
-      uploadedVideo && !leaseLost
+      uploadedVideo && !leaseLost && !retryScheduled
         ? await canCleanupUploadedVideo(jobId)
         : false;
 
