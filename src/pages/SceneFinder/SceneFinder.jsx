@@ -57,10 +57,21 @@ const normalizeResult = (result) => ({
   timestamp: result?.timestamp ?? result?.sceneTimestamp ?? null,
 });
 
-const formatTimestamp = (value) => {
+const formatTimestampValue = (value) => {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   const total = Math.max(0, Math.round(value));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+  return Math.floor(total / 60) + ":" + String(total % 60).padStart(2, "0");
+};
+
+const formatTimestamp = (value) => {
+  if (typeof value === "number") return formatTimestampValue(value);
+  if (!value || typeof value !== "object") return null;
+
+  const start = formatTimestampValue(value.start);
+  const end = formatTimestampValue(value.end);
+
+  if (start && end && start !== end) return start + "–" + end;
+  return start || end || null;
 };
 
 const SceneFinder = () => {
