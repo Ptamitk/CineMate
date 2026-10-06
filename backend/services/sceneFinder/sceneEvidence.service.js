@@ -445,7 +445,47 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     best.sceneScore >= 0.92 &&
     margin >= 0.035;
 
-  const accepted = visualAccepted || corroboratedTextAccepted || exactTextAccepted;
+  let finalBest = accepted ? best : null;
+  let finalMargin = margin;
+  let recoveryUsed = false;
+
+  if (!finalBest) {
+    const recovery = await runVisualRecoveryPass();
+    if (recovery) {
+      const mergedArtwork = [...artworkSimilarityMatches, ...recovery.recoveryArtworkMatches];
+      const mergedEpisodes = [...episodeSimilarityMatches, ...recovery.recoveryEpisodeMatches];
+
+      const merged = candidates.map(candidate => {
+        const t = textEvidence(candidate, text);
+        const art = aggregate(mergedArtwork, candidate);
+        const ep = aggregate(mergedEpisodes, candidate);
+        const label = aggregateLabel(visualLabelMatches, candidate);
+        const artworkScore = Math.max(
+          art.average * 0.58 + art.max * 0.17 + art.temporalConsistency * 0.25,
+          ep.average * 0.62 + ep.max * 0.18 + ep.temporalConsistency * 0.20
+        );
+        const labelScore = label.visualLabelScore * 0.58 + label.visualLabelMax * 0.17 + label.visualLabelTemporalConsistency * 0.25;
+        const score = Math.min(0.98, Math.max(
+          t.exact ? 0.97 : Math.max(t.stableOcrScore * 0.52, t.speechScore * 0.40, t.captionScore * 0.28) * 0.25 +
+            Math.max(artworkScore * 0.42 + labelScore * 0.58, labelScore) * 0.75,
+          artworkScore * 0.95
+        ));
+        return { ...scored.find(x => x.contentId === candidate.contentId && x.contentType === candidate.contentType), sceneScore: Number(score.toFixed(4)), confidence: Math.round(score * 100) };
+      }).sort((a,b) => b.sceneScore-a.sceneScore);
+
+      const recoveryBest = merged[0] || null;
+      const recoverySecond = merged[1] || null;
+      const recoveryMargin = recoveryBest && recoverySecond ? recoveryBest.sceneScore - recoverySecond.sceneScore : 0;
+      if (recoveryBest && recoveryMargin >= 0.07 && recoveryBest.sceneScore >= 0.66 &&
+          (recoveryBest.evidenceType === "visual" || recoveryBest.evidenceType === "episode-visual")) {
+        finalBest = recoveryBest;
+        finalMargin = recoveryMargin;
+        recoveryUsed = true;
+      }
+    }
+  }
+
+  const accepted = Boolean(finalBest);
 
   const rejectionReason = !best
     ? "no-candidates"
