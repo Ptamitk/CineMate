@@ -6,6 +6,31 @@ const { analyzeArtworkSimilarity, analyzeCandidateVisualLabels } = require("./vi
 const { selectUsefulFrames } = require("./frameSelection.service");
 const { overlapScore, exactTitle, extractTextEvidence } = require("./evidenceCleanup.service");
 
+const aiStageQueue = [];
+let aiStageRunning = false;
+
+const runAiStageExclusive = async (task) => {
+  await new Promise((resolve, reject) => {
+    aiStageQueue.push({ resolve, reject });
+    const drain = () => {
+      if (aiStageRunning || !aiStageQueue.length) return;
+      aiStageRunning = true;
+      const waiter = aiStageQueue.shift();
+      waiter.resolve();
+    };
+    drain();
+  });
+
+  try {
+    return await task();
+  } finally {
+    aiStageRunning = false;
+    if (aiStageQueue.length) {
+      aiStageQueue[0].resolve();
+    }
+  }
+};
+
 const aggregate = (matches, candidate) => {
   const rows = (matches || []).filter(item =>
     Number(item.contentId) === Number(candidate.contentId) &&
@@ -65,7 +90,7 @@ const textEvidence = (candidate, text) => {
   return { captionScore, ocrScore, stableOcrScore, speechScore, captionExact, speechExact, stableOcrExact, exact, independent };
 };
 
-const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audioPath = null, caption = "", frameTimestamps = {} }) => {
+const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audioPath = null, caption = "", frameTimestamps = {} }) => runAiStageExclusive(async () => {
   const signals = await analyzeSceneSignals({
     frameFiles: ocrFrameFiles.length ? ocrFrameFiles : frameFiles,
     audioPath
@@ -398,6 +423,6 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     episodeSimilarityMatches,
     visualLabelMatches
   };
-};
+});
 
 module.exports = { analyzeSceneEvidence };
