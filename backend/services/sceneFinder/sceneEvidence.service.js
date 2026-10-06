@@ -104,7 +104,7 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
 
   const visualFrames = selectUsefulFrames({
     frameFiles,
-    maxFrames: Math.max(10, Math.min(16, Number(process.env.SCENE_FINDER_VISUAL_FRAMES || 12)))
+    maxFrames: Math.max(10, Math.min(16, Number(process.env.SCENE_FINDER_VISUAL_FRAMES || 14)))
   });
 
   // Fast-path: when the evidence already contains an exact, strong title,
@@ -178,13 +178,13 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
 
   const artworkCandidates = await getCandidateArtwork(
     candidates,
-    Math.min(candidates.length, Math.max(20, Number(process.env.SCENE_FINDER_ARTWORK_CANDIDATES || 64)))
+    Math.min(candidates.length, Math.max(20, Number(process.env.SCENE_FINDER_ARTWORK_CANDIDATES || 80)))
   );
 
   const tvCandidates = candidates.filter(x => x.contentType === "tv");
   const episodeArtwork = await getCandidateEpisodeArtwork(
     tvCandidates,
-    Math.min(tvCandidates.length, Number(process.env.SCENE_FINDER_EPISODE_CANDIDATES || 8))
+    Math.min(tvCandidates.length, Number(process.env.SCENE_FINDER_EPISODE_CANDIDATES || 16))
   );
 
   const artworkFrames = selectUsefulFrames({
