@@ -99,10 +99,20 @@ const extractFrames = async ({
       }
     );
 
+    const frameTimestamps = Object.fromEntries(
+      frameFiles.map((file, index) => [
+        file,
+        Number(Math.min(duration, index * effectiveInterval).toFixed(3)),
+      ])
+    );
+
     return {
       outputDirectory,
       frameFiles,
       ocrFrameFiles: [...new Set(ocrFrameFiles)],
+      frameTimestamps,
+      duration,
+      effectiveInterval,
       totalFrames: frameFiles.length,
       selectedFrames: ocrFrameFiles.length,
     };
