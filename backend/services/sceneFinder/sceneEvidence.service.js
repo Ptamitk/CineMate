@@ -102,9 +102,13 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     speech: signals.speech.text || ""
   });
 
+  const visualFrameLimit = Math.max(
+    10,
+    Math.min(16, Number(process.env.SCENE_FINDER_VISUAL_FRAMES || 14))
+  );
   const visualFrames = selectUsefulFrames({
     frameFiles,
-    maxFrames: Math.max(10, Math.min(16, Number(process.env.SCENE_FINDER_VISUAL_FRAMES || 14)))
+    maxFrames: visualFrameLimit
   });
 
   // Fast-path: when the evidence already contains an exact, strong title,
