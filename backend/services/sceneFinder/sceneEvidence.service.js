@@ -102,9 +102,13 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     speech: signals.speech.text || ""
   });
 
+  const fallbackEnabled = String(process.env.SCENE_FINDER_FALLBACK_ENABLED || "true").toLowerCase() === "true";
   const visualFrameLimit = Math.max(
     10,
-    Math.min(16, Number(process.env.SCENE_FINDER_VISUAL_FRAMES || 14))
+    Math.min(
+      fallbackEnabled ? 20 : 16,
+      Number(process.env.SCENE_FINDER_VISUAL_FRAMES || (fallbackEnabled ? 20 : 14))
+    )
   );
   const visualFrames = selectUsefulFrames({
     frameFiles,
