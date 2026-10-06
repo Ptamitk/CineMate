@@ -53,7 +53,7 @@ const getEpisodeArtwork = async (candidate) => {
 
     const concurrency = Math.max(
       2,
-      Math.min(5, Number(process.env.SCENE_FINDER_EPISODE_CONCURRENCY || 4))
+      Math.min(3, Number(process.env.SCENE_FINDER_EPISODE_CONCURRENCY || 3))
     );
 
     const episodes = [];
