@@ -16,6 +16,7 @@ import {
   Send,
   User,
   X,
+  HelpCircle,
 } from "lucide-react";
 
 import { useAuth } from "../../context/AuthContext";
@@ -57,6 +58,7 @@ const Profile = () => {
     useState(true);
   const [telegramDisconnecting, setTelegramDisconnecting] =
     useState(false);
+  const [showTelegramGuide, setShowTelegramGuide] = useState(false);
   const telegramStatusRequestRef = useRef(0);
 
   const watchlistCount = useMemo(() => {
@@ -352,10 +354,8 @@ const Profile = () => {
         }
 
         setTelegramCode(data.code);
-        await fetchTelegramStatus();
-
         setTelegramSuccess(
-          "Pairing code generated. It will expire in 10 minutes."
+          "Pairing code generated. Send it to the CineMate Telegram bot to connect."
         );
       } catch (error) {
         console.error(
@@ -704,10 +704,33 @@ const Profile = () => {
                 </p>
               )}
             </div>
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
-              <Send size={23} />
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowTelegramGuide((value) => !value)}
+                className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.06] px-4 py-3 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/[0.1]"
+              >
+                <HelpCircle size={16} />
+                How to Connect
+              </button>
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
+                <Send size={23} />
+              </div>
             </div>
           </div>
+
+          {showTelegramGuide && (
+            <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.025] p-5 sm:p-6">
+              <p className="text-xs uppercase tracking-[0.2em] text-white/30">Telegram Setup</p>
+              <h3 className="mt-2 text-xl font-bold">Connect in a few steps</h3>
+              <div className="mt-5 grid gap-3 sm:grid-cols-4">
+                <div className="rounded-xl border border-white/10 bg-black/30 p-4"><span className="text-xs text-white/30">01</span><p className="mt-2 text-sm font-semibold">Generate a code</p><p className="mt-1 text-xs leading-5 text-white/40">Click Generate Code and copy your temporary pairing code.</p></div>
+                <div className="rounded-xl border border-white/10 bg-black/30 p-4"><span className="text-xs text-white/30">02</span><p className="mt-2 text-sm font-semibold">Open Telegram</p><p className="mt-1 text-xs leading-5 text-white/40">Open the CineMate Telegram bot.</p></div>
+                <div className="rounded-xl border border-white/10 bg-black/30 p-4"><span className="text-xs text-white/30">03</span><p className="mt-2 text-sm font-semibold">Send the command</p><p className="mt-1 text-xs leading-5 text-white/40">Send <span className="font-mono text-white/60">/connect YOUR_CODE</span> to the bot.</p></div>
+                <div className="rounded-xl border border-white/10 bg-black/30 p-4"><span className="text-xs text-white/30">04</span><p className="mt-2 text-sm font-semibold">You are connected</p><p className="mt-1 text-xs leading-5 text-white/40">This page automatically updates to Connected.</p></div>
+              </div>
+            </div>
+          )}
 
           <div className="mt-7 rounded-2xl border border-white/10 bg-black/30 p-5 sm:p-6">
             {telegramConnected ? (
