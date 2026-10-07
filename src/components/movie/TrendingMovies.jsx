@@ -29,15 +29,33 @@ const TrendingMovies = ({ items = [] }) => {
         scrollTrigger: { trigger: section, start: "top 82%", toggleActions: "play none none reverse" },
       });
 
-      gsap.from(".movie-card", {
-        y: isMobile ? 25 : 65,
-        opacity: 0,
-        scale: isMobile ? 0.98 : 0.94,
-        duration: isMobile ? 0.5 : 0.75,
-        stagger: isMobile ? 0.05 : 0.08,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ".movie-grid", start: "top 88%", toggleActions: "play none none reverse" },
-      });
+      gsap.fromTo(
+        ".movie-card",
+        {
+          x: (i) => (i % 2 ? 1 : -1) * (isMobile ? 18 : 80 + (i % 4) * 28),
+          y: (i) => (i % 3 === 0 ? -1 : 1) * (isMobile ? 14 : 55 + (i % 3) * 30),
+          rotation: (i) => (i % 2 ? 1 : -1) * (isMobile ? 3 : 7 + (i % 3) * 2),
+          scale: isMobile ? 0.97 : 0.82,
+          opacity: 0,
+          filter: isMobile ? "blur(1px)" : "blur(7px)",
+        },
+        {
+          x: 0,
+          y: 0,
+          rotation: 0,
+          scale: 1,
+          opacity: 1,
+          filter: "blur(0px)",
+          duration: isMobile ? 0.7 : 1.1,
+          stagger: { each: isMobile ? 0.04 : 0.075, from: "center" },
+          ease: "expo.out",
+          scrollTrigger: {
+            trigger: ".movie-grid",
+            start: isMobile ? "top 92%" : "top 88%",
+            toggleActions: "play none none reverse",
+          },
+        }
+      );
     }, section);
 
     return () => ctx.revert();
@@ -68,7 +86,7 @@ const TrendingMovies = ({ items = [] }) => {
         {items.length ? (
           <div className="movie-grid grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5 lg:gap-5">
             {items.slice(0, 10).map((movie) => (
-              <Link key={movie.id} to={`/movie/${movie.id}`} className="movie-card group relative block will-change-transform">
+              <Link key={movie.id} to={`/movie/${movie.id}`} className="movie-card group relative block will-change-transform [transform-style:preserve-3d]">
                 <div className="relative aspect-[2/3] overflow-hidden rounded-2xl border border-white/10 bg-white/5">
                   {movie.image ? (
                     <img
