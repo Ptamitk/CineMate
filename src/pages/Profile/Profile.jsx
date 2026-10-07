@@ -56,6 +56,7 @@ const Profile = () => {
     useState(true);
   const [telegramDisconnecting, setTelegramDisconnecting] =
     useState(false);
+  const telegramStatusRequestRef = useRef(0);
 
   const watchlistCount = useMemo(() => {
     return getWatchlist().length;
@@ -100,6 +101,8 @@ const Profile = () => {
   const fetchTelegramStatus = async () => {
     if (!token) return;
 
+    const requestId = ++telegramStatusRequestRef.current;
+
     try {
       const response = await fetch(
         "http://localhost:5000/api/telegram-account/status",
@@ -117,6 +120,9 @@ const Profile = () => {
           data.message || "Failed to fetch Telegram status."
         );
       }
+
+      // Ignore an older polling response that started before a disconnect.
+      if (requestId !== telegramStatusRequestRef.current) return;
 
       setTelegramConnected(Boolean(data.connected));
       setTelegramBot(data.bot || null);
@@ -145,6 +151,9 @@ const Profile = () => {
   const handleDisconnectTelegram = async () => {
     try {
       setTelegramDisconnecting(true);
+      // Invalidate any in-flight status request so it cannot restore
+      // the connected state after a successful disconnect.
+      telegramStatusRequestRef.current += 1;
       setTelegramError("");
       setTelegramSuccess("");
 
