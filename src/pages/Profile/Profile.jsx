@@ -3,7 +3,6 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000
 
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -23,6 +22,7 @@ import {
 
 import { useAuth } from "../../context/AuthContext";
 import { getWatchlist } from "../../utils/watchlist";
+import { getLibrary } from "../../services/content/userContentService";
 
 const Profile = () => {
   const { user, token, updateUser } = useAuth();
@@ -63,9 +63,30 @@ const Profile = () => {
   const [showTelegramGuide, setShowTelegramGuide] = useState(false);
   const telegramStatusRequestRef = useRef(0);
 
-  const watchlistCount = useMemo(() => {
-    return getWatchlist().length;
-  }, []);
+  const [watchlistCount, setWatchlistCount] = useState(0);
+  const [watchedCount, setWatchedCount] = useState(0);
+  const [favoriteCount, setFavoriteCount] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    const fetchLibraryCounts = async () => {
+      try {
+        const [watchlist, watched, favorites] = await Promise.all([
+          getWatchlist(),
+          getLibrary("watched"),
+          getLibrary("favorites"),
+        ]);
+        if (!active) return;
+        setWatchlistCount(Array.isArray(watchlist) ? watchlist.length : 0);
+        setWatchedCount(Array.isArray(watched) ? watched.length : 0);
+        setFavoriteCount(Array.isArray(favorites) ? favorites.length : 0);
+      } catch (error) {
+        console.error("Library Count Error:", error);
+      }
+    };
+    if (token) fetchLibraryCounts();
+    return () => { active = false; };
+  }, [token]);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -641,7 +662,7 @@ const Profile = () => {
                 </p>
 
                 <p className="mt-1 text-2xl font-bold">
-                  0
+                  {watchedCount}
                 </p>
 
               </div>
