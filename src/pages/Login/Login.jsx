@@ -1,3 +1,4 @@
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 import {
   Link,
   useNavigate,
@@ -57,7 +58,7 @@ const Login = () => {
       setLoading(true);
 
       const response = await fetch(
-        "http://localhost:5000/api/auth/login",
+        "${API_BASE_URL}/auth/login",
         {
           method: "POST",
           headers: {
@@ -419,7 +420,7 @@ const Login = () => {
             type="button"
             onClick={() => {
               window.location.href =
-                "http://localhost:5000/api/auth/google";
+                "${API_BASE_URL}/auth/google";
             }}
             disabled={loading}
             className="mt-5 flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] py-3.5 text-sm font-semibold text-white transition hover:border-white/20 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
