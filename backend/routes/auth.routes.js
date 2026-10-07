@@ -5,6 +5,8 @@ const {
   signup,
   verifyEmail,
   login,
+  forgotPassword,
+  resetPassword,
   getMe,
 } = require("../controllers/auth.controller");
 
@@ -17,6 +19,10 @@ router.post("/signup", signup);
 router.get("/verify-email", verifyEmail);
 
 router.post("/login", login);
+
+router.post("/forgot-password", forgotPassword);
+
+router.post("/reset-password", resetPassword);
 
 
 router.get("/me", authMiddleware, getMe);
