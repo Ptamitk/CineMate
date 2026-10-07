@@ -11,6 +11,7 @@ const {
 
 const {
   sendVerificationEmail,
+  sendPasswordResetEmail,
 } = require("../services/email.service");
 
 const signup = async (req, res) => {
@@ -247,6 +248,137 @@ const login = async (req, res) => {
   }
 };
 
+
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email || !email.trim()) {
+      return res.status(400).json({
+        message: "Email is required.",
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const user = await User.findOne({
+      email: normalizedEmail,
+    });
+
+    // Do not reveal whether an email exists.
+    const successMessage =
+      "If an account with that email exists, a password reset link has been sent.";
+
+    if (!user) {
+      return res.status(200).json({
+        message: successMessage,
+      });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString("hex");
+
+    user.passwordResetToken = resetToken;
+    user.passwordResetExpires = new Date(
+      Date.now() + 15 * 60 * 1000
+    );
+
+    await user.save();
+
+    try {
+      await sendPasswordResetEmail(
+        user.email,
+        resetToken
+      );
+    } catch (emailError) {
+      user.passwordResetToken = null;
+      user.passwordResetExpires = null;
+      await user.save();
+
+      console.error(
+        "Password Reset Email Error:",
+        emailError
+      );
+
+      return res.status(500).json({
+        message:
+          "Unable to send password reset email. Please try again.",
+      });
+    }
+
+    return res.status(200).json({
+      message: successMessage,
+    });
+  } catch (error) {
+    console.error(
+      "Forgot Password Error:",
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        "Something went wrong while requesting a password reset.",
+    });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const {
+      token,
+      password,
+    } = req.body;
+
+    if (!token || !password) {
+      return res.status(400).json({
+        message:
+          "Reset token and new password are required.",
+      });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({
+        message:
+          "Password must be at least 8 characters.",
+      });
+    }
+
+    const user = await User.findOne({
+      passwordResetToken: token,
+      passwordResetExpires: {
+        $gt: new Date(),
+      },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        message:
+          "Password reset link is invalid or expired.",
+      });
+    }
+
+    user.password = await hashPassword(password);
+    user.passwordResetToken = null;
+    user.passwordResetExpires = null;
+
+    await user.save();
+
+    return res.status(200).json({
+      message:
+        "Password reset successfully. You can now login.",
+    });
+  } catch (error) {
+    console.error(
+      "Reset Password Error:",
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        "Something went wrong while resetting your password.",
+    });
+  }
+};
+
 const getMe = async (req, res) => {
   try {
     const user = await User.findById(
@@ -289,6 +421,8 @@ module.exports = {
   signup,
   verifyEmail,
   login,
+  forgotPassword,
+  resetPassword,
   getMe,
 };
 
