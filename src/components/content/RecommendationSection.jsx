@@ -1,5 +1,5 @@
 
-import ContentCard from "./ContentCard";
+import ContentGrid from "./ContentGrid";
 
 const RecommendationSection = ({
   title,
@@ -79,19 +79,11 @@ const RecommendationSection = ({
           RECOMMENDATION GRID
       ========================= */}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-
-        {normalizedItems.map(
-          (item, index) => (
-            <ContentCard
-              key={`${item.type}-${item.id}`}
-              content={item}
-              index={index}
-            />
-          )
-        )}
-
-      </div>
+      <ContentGrid
+        items={normalizedItems}
+        cinematic
+        skeletonCount={6}
+      />
 
     </section>
   );
