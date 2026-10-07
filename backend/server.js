@@ -120,7 +120,10 @@ console.log(
     console.log(`CineMate server running on port ${PORT}`);
   });
 
+  let shuttingDown = false;
   const shutdown = async (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     console.log(`Received ${signal}; shutting down CineMate gracefully...`);
     server.close(async () => {
       try {
