@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
 Bookmark,
@@ -38,7 +38,7 @@ onRemove,
 }) => {
 const isPerson = content.type === "person";
 
-const [watchlisted, setWatchlisted] = useState(false);
+const [watchlisted, setWatchlisted] = useState(false);\nconst cardRef = useRef(null);
 
 const detailsPath =
 getContentPath(content);
@@ -196,7 +196,7 @@ CLICKABLE CONTENT
          POSTER OVERLAY
       ========================= */}
 
-      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/10 to-transparent opacity-80" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/10 to-transparent opacity-80" />\n      <div className="pointer-events-none absolute -inset-1/2 opacity-0 transition-opacity duration-500 group-hover:opacity-100" style={{ background: "radial-gradient(circle at var(--mx) var(--my), rgba(255,255,255,0.14), transparent 24%)" }} />
 
       {/* =========================
          PERSON TOP LABEL
