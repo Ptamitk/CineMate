@@ -2,6 +2,7 @@
 const express = require("express");
 const cors = require("cors");
 const rateLimit = require("./middleware/rateLimit.middleware");
+const { metricsMiddleware, getMetrics } = require("./middleware/metrics.middleware");
 require("dotenv").config();
 
 const connectDB = require("./config/db");
@@ -47,6 +48,7 @@ app.use(cors({ origin: (origin, callback) => { if (!origin || allowedOrigins.inc
 app.disable("x-powered-by");
 app.use((req,res,next)=>{ res.setHeader("X-Content-Type-Options","nosniff"); res.setHeader("X-Frame-Options","DENY"); res.setHeader("Referrer-Policy","strict-origin-when-cross-origin"); next(); });
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "1mb" }));
+app.use(metricsMiddleware);
 app.use(rateLimit);
 
 app.use("/api/auth", authRoutes);
@@ -84,6 +86,7 @@ app.use(
 
 
 app.get("/health", (req,res) => res.status(200).json({ status:"ok", service:"cinemate-backend", timestamp:new Date().toISOString() }));
+app.get("/metrics", (req,res) => res.status(200).json(getMetrics()));
 
 app.get("/", (req, res) => {
   res.json({
