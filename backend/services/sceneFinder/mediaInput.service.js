@@ -16,22 +16,6 @@ const isInstagramUrl = (value = "") => {
   }
 };
 
-const getDirectVideoUrl = (value = "") => {
-  try {
-    const url = new URL(value.trim());
-
-    if (!["http:", "https:"].includes(url.protocol)) {
-      throw new Error("Only HTTP(S) video URLs are supported.");
-    }
-
-    return url.toString();
-  } catch (error) {
-    throw new Error(
-      error.message || "Invalid video URL."
-    );
-  }
-};
-
 const getMediaInput = async ({
   reelUrl,
   uploadedFile = null,
