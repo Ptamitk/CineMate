@@ -39,7 +39,6 @@ onRemove,
 const isPerson = content.type === "person";
 
 const [watchlisted, setWatchlisted] = useState(false);
-const cardRef = useRef(null);
 
 const detailsPath =
 getContentPath(content);
