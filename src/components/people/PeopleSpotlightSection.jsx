@@ -181,7 +181,7 @@ const PeopleSpotlightSection = ({ items = [] }) => {
           ========================= */}
 
           <div className="people-spotlight-grid">
-            <ContentGrid items={items} />
+            <ContentGrid items={items} animation="depth" />
           </div>
 
         </div>
