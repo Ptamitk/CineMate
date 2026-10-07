@@ -177,6 +177,7 @@ const Notifications = () => {
             </p>
           </div>
         ) : (
+          <>
           <div className="space-y-3">
             {notifications.map(
               (notification) => (
@@ -255,6 +256,7 @@ const Notifications = () => {
               </button>
             </div>
           )}
+          </>
         )}
       </div>
     </main>
