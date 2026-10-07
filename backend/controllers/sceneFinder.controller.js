@@ -174,7 +174,7 @@ const getSceneAnalysisStatus = async (
   try {
     const { jobId } = req.params;
 
-    if (!/^[a-f\\d]{24}$/i.test(String(jobId))) {
+    if (!/^[a-f\d]{24}$/i.test(String(jobId))) {
       return res.status(400).json({
         message: "Invalid Scene Finder job ID.",
       });
