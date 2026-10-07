@@ -139,10 +139,12 @@ console.log(
 
   process.on("uncaughtException", (error) => {
     console.error("Uncaught exception:", error);
+    shutdown("uncaughtException");
   });
 
   process.on("unhandledRejection", (reason) => {
     console.error("Unhandled rejection:", reason);
+    shutdown("unhandledRejection");
   });
 };
 
