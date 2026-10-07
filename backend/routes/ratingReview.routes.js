@@ -2,7 +2,7 @@ const express=require("express");
 const auth=require("../middleware/auth.middleware");
 const c=require("../controllers/ratingReview.controller");
 const router=express.Router();
-router.get("/:contentType/:contentId/ratings",auth,c.getRatingSummary);
+router.get("/:contentType/:contentId/ratings",c.getRatingSummary);
 router.put("/:contentType/:contentId/ratings",auth,c.upsertRating);
 router.delete("/:contentType/:contentId/ratings",auth,c.deleteRating);
 router.get("/:contentType/:contentId/reviews",c.listReviews);
