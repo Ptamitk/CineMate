@@ -35,7 +35,7 @@ export const getNotifications =
       }
 
       const response = await fetch(
-        API_URL,
+        API_URL + "?page=1&limit=50",
         {
           method: "GET",
           headers: {
@@ -111,22 +111,29 @@ export const markNotificationAsRead =
     }
   };
 
-  export const getUnreadNotificationCount =
-  async () => {
-    try {
-      const notifications =
-        await getNotifications();
+  export const getUnreadNotificationCount = async () => {
+  try {
+    const token = getToken();
+    if (!token) return 0;
 
-      return notifications.filter(
-        (notification) =>
-          !notification.isRead
-      ).length;
-    } catch (error) {
-      console.error(
-        "Unread Notifications Error:",
-        error
-      );
+    const response = await fetch(
+      API_URL + "/unread-count",
+      {
+        method: "GET",
+        headers: {
+          Authorization: "Bearer " + token,
+        },
+      }
+    );
 
-      return 0;
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.message || "Failed to fetch unread notifications.");
     }
-  };
+
+    return Number(data.count) || 0;
+  } catch (error) {
+    console.error("Unread Notifications Error:", error);
+    return 0;
+  }
+};
