@@ -11,9 +11,7 @@ const AuthContext = createContext(null);
 
 const AUTH_STORAGE_KEY = "cinemate_auth";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  "http://localhost:5000";
+
 
 export const AuthProvider = ({ children }) => {
 const [user, setUser] = useState(null);
@@ -56,7 +54,7 @@ localStorage.getItem(AUTH_STORAGE_KEY);
     }
 
     const response = await fetch(
-      `${API_BASE_URL}/api/auth/me`,
+      `${API_BASE_URL}/auth/me`,
       {
         method: "GET",
         headers: {
@@ -135,7 +133,7 @@ const connectTelegramStream = async () => {
 
   try {
     const response = await fetch(
-      `${API_BASE_URL}/api/telegram-events/search-stream`,
+      `${API_BASE_URL}/telegram-events/search-stream`,
       {
         method: "GET",
         headers: {
