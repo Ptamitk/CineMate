@@ -1,0 +1,12 @@
+const express=require("express");
+const auth=require("../middleware/auth.middleware");
+const c=require("../controllers/ratingReview.controller");
+const router=express.Router();
+router.get("/:contentType/:contentId/ratings",auth,c.getRatingSummary);
+router.put("/:contentType/:contentId/ratings",auth,c.upsertRating);
+router.delete("/:contentType/:contentId/ratings",auth,c.deleteRating);
+router.get("/:contentType/:contentId/reviews",c.listReviews);
+router.post("/:contentType/:contentId/reviews",auth,c.createReview);
+router.put("/:contentType/:contentId/reviews/:reviewId",auth,c.updateReview);
+router.delete("/:contentType/:contentId/reviews/:reviewId",auth,c.deleteReview);
+module.exports=router;
