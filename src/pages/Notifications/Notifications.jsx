@@ -18,6 +18,10 @@ const Notifications = () => {
   const [loading, setLoading] =
     useState(true);
 
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   useEffect(() => {
     const fetchNotifications =
       async () => {
@@ -25,9 +29,11 @@ const Notifications = () => {
           setLoading(true);
 
           const data =
-            await getNotifications();
+            await getNotifications(1, 30);
 
-          setNotifications(data);
+          setNotifications(data.notifications || []);
+          setPage(data.page || 1);
+          setHasMore(Boolean(data.hasMore));
         } catch (error) {
           console.error(
             "Notifications Page Error:",
@@ -40,6 +46,25 @@ const Notifications = () => {
 
     fetchNotifications();
   }, []);
+
+  const loadMoreNotifications = async () => {
+    if (!hasMore || loadingMore) return;
+
+    setLoadingMore(true);
+    try {
+      const data = await getNotifications(page + 1, 30);
+      setNotifications((current) => [
+        ...current,
+        ...(data.notifications || []),
+      ]);
+      setPage(data.page || page + 1);
+      setHasMore(Boolean(data.hasMore));
+    } catch (error) {
+      console.error("Load More Notifications Error:", error);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const handleMarkAsRead =
     async (notificationId) => {
@@ -218,6 +243,18 @@ const Notifications = () => {
               )
             )}
           </div>
+          {hasMore && (
+            <div className="flex justify-center pt-3">
+              <button
+                type="button"
+                onClick={loadMoreNotifications}
+                disabled={loadingMore}
+                className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {loadingMore ? "Loading..." : "Load more notifications"}
+              </button>
+            </div>
+          )}
         )}
       </div>
     </main>
