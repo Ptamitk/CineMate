@@ -20,6 +20,7 @@ const postShareRoutes =
   const sceneFinderRoutes = require("./routes/sceneFinder.routes");
   const {
   getTelegramBotInfo,
+  configureTelegramWebhook,
 } = require("./services/telegram/telegram.service");
 const telegramRoutes = require("./routes/telegram.routes");
 const telegramAccountRoutes = require("./routes/telegramAccount.routes");
@@ -95,6 +96,8 @@ console.log(
   "Telegram Bot Connected:",
   telegramBot.result.username
 );
+
+  await configureTelegramWebhook();
 
   const server = app.listen(PORT, () => {
     console.log(`CineMate server running on port ${PORT}`);
