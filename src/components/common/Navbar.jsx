@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   Bell,
   Bookmark,
+  Send,
   LogOut,
   Menu,
   Search,
@@ -321,6 +322,17 @@ const Navbar = () => {
                 >
                   <UserRound size={16} />
                   Profile
+                </Link>
+
+                <Link
+                  to="/profile#telegram"
+                  onClick={() =>
+                    setIsProfileOpen(false)
+                  }
+                  className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-white/60 transition hover:bg-white/5 hover:text-white"
+                >
+                  <Send size={16} />
+                  Telegram
                 </Link>
 
                 <Link
