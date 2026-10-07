@@ -78,7 +78,6 @@ const Profile = () => {
         if (!active) return;
         setWatchlistCount(Array.isArray(watchlist) ? watchlist.length : 0);
         setWatchedCount(Array.isArray(watched) ? watched.length : 0);
-        setFavoriteCount(Array.isArray(favorites) ? favorites.length : 0);
       } catch (error) {
         console.error("Library Count Error:", error);
       }
