@@ -59,7 +59,7 @@ const Login = () => {
       setLoading(true);
 
       const response = await fetch(
-        "${API_BASE_URL}/auth/login",
+        API_BASE_URL + "/auth/login",
         {
           method: "POST",
           headers: {
@@ -421,7 +421,7 @@ const Login = () => {
             type="button"
             onClick={() => {
               window.location.href =
-                "${API_BASE_URL}/auth/google";
+                API_BASE_URL + "/auth/google";
             }}
             disabled={loading}
             className="mt-5 flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] py-3.5 text-sm font-semibold text-white transition hover:border-white/20 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
