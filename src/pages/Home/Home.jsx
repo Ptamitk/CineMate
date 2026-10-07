@@ -7,6 +7,7 @@ import { contentService } from "../../services/content/contentService";
 
 import TrendingMovies from "../../components/movie/TrendingMovies";
 import PopularMovies from "../../components/movie/PopularMovies";
+import PersonalizedSection from "../../components/content/PersonalizedSection";
 import SocialPreview from "../../components/social/SocialPreview";
 import Footer from "../../components/common/Footer";
 import InstagramSceneFinder from "../../components/social/InstagramSceneFinder";
@@ -318,6 +319,8 @@ const Home = () => {
       <TrendingMovies items={normalizeMovies(trendingMovies)} />
       <TrendingTVSection items={normalizeTV(trendingTV)} />
       <PopularMovies items={normalizeMovies(popularMovies)} />
+
+      <PersonalizedSection />
       <PopularTVSection items={normalizeTV(popularTV)} />
       <GenreSection />
       <PeopleSpotlightSection items={normalizePeople(popularPeople)} />
