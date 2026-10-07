@@ -1,6 +1,7 @@
 
 const express = require("express");
 const cors = require("cors");
+const rateLimit = require("./middleware/rateLimit.middleware");
 require("dotenv").config();
 
 const connectDB = require("./config/db");
@@ -41,8 +42,12 @@ const {
 
 const app = express();
 
-app.use(cors());
-app.use(express.json());
+const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:5173").split(",").map((value) => value.trim()).filter(Boolean);
+app.use(cors({ origin: (origin, callback) => { if (!origin || allowedOrigins.includes(origin)) return callback(null, true); return callback(new Error("CORS origin denied.")); }, credentials: true }));
+app.disable("x-powered-by");
+app.use((req,res,next)=>{ res.setHeader("X-Content-Type-Options","nosniff"); res.setHeader("X-Frame-Options","DENY"); res.setHeader("Referrer-Policy","strict-origin-when-cross-origin"); next(); });
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "1mb" }));
+app.use(rateLimit);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
@@ -77,6 +82,8 @@ app.use(
 
 
 
+
+app.get("/health", (req,res) => res.status(200).json({ status:"ok", service:"cinemate-backend", timestamp:new Date().toISOString() }));
 
 app.get("/", (req, res) => {
   res.json({
