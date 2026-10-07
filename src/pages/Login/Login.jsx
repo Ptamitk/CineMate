@@ -12,7 +12,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
 
 const Login = () => {
@@ -25,6 +25,21 @@ const Login = () => {
   const [error, setError] = useState("");
 
   const { login } = useAuth();
+
+  useEffect(() => {
+    const googleError = new URLSearchParams(
+      window.location.search
+    ).get("google_error");
+
+    if (googleError) {
+      setError(googleError);
+      window.history.replaceState(
+        {},
+        document.title,
+        "/login"
+      );
+    }
+  }, []);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -413,6 +428,24 @@ const Login = () => {
               )}
             </motion.button>
           </form>
+
+          {/* GOOGLE SIGN IN */}
+          <motion.button
+            type="button"
+            onClick={() => {
+              window.location.href =
+                "http://localhost:5000/api/auth/google";
+            }}
+            disabled={loading}
+            className="mt-5 flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] py-3.5 text-sm font-semibold text-white transition hover:border-white/20 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+            whileHover={!loading ? { scale: 1.01 } : {}}
+            whileTap={!loading ? { scale: 0.98 } : {}}
+          >
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs font-bold text-black">
+              G
+            </span>
+            Continue with Google
+          </motion.button>
 
           {/* SIGNUP */}
           <motion.div
