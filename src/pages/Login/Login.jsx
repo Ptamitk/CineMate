@@ -353,12 +353,12 @@ const Login = () => {
                 Remember me
               </label>
 
-              <button
-                type="button"
+              <Link
+                to="/forgot-password"
                 className="text-white/50 transition hover:text-white"
               >
                 Forgot password?
-              </button>
+              </Link>
             </motion.div>
 
             {/* LOGIN BUTTON */}
