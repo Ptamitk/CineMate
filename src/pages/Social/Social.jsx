@@ -216,7 +216,7 @@ const Social = () => {
 
       const response =
         await fetch(
-          `${API_BASE_URL}/api/posts`,
+          `${API_BASE_URL}/posts`,
           {
             method: "GET",
             headers: {
@@ -268,7 +268,7 @@ const Social = () => {
 
       const response =
         await fetch(
-          `${API_BASE_URL}/api/posts/${postId}`,
+          `${API_BASE_URL}/posts/${postId}`,
           {
             method: "GET",
             headers: {
@@ -344,7 +344,7 @@ const Social = () => {
 
       const response =
         await fetch(
-          `${API_BASE_URL}/api/follows/${userId}`,
+          `${API_BASE_URL}/follows/${userId}`,
           {
             method: "GET",
             headers: {
@@ -402,7 +402,7 @@ const Social = () => {
 
       const response =
         await fetch(
-          `${API_BASE_URL}/api/follows/${userId}`,
+          `${API_BASE_URL}/follows/${userId}`,
           {
             method: "POST",
             headers: {
@@ -951,7 +951,7 @@ const Social = () => {
 
         const response =
           await fetch(
-            `${API_BASE_URL}/api/posts`,
+            `${API_BASE_URL}/posts`,
             {
               method: "POST",
               headers: {
@@ -1016,7 +1016,7 @@ const Social = () => {
 
       const response =
         await fetch(
-          `${API_BASE_URL}/api/posts/${postId}`,
+          `${API_BASE_URL}/posts/${postId}`,
           {
             method: "POST",
             headers: {
@@ -1088,7 +1088,7 @@ const Social = () => {
 
         const response =
           await fetch(
-            `${API_BASE_URL}/api/comments/post/${postId}`,
+            `${API_BASE_URL}/comments/post/${postId}`,
             {
               method: "GET",
               headers: {
@@ -1183,7 +1183,7 @@ const Social = () => {
 
         const response =
           await fetch(
-            `${API_BASE_URL}/api/comments/post/${postId}`,
+            `${API_BASE_URL}/comments/post/${postId}`,
             {
               method: "POST",
               headers: {
@@ -1307,7 +1307,7 @@ const Social = () => {
 
         const response =
           await fetch(
-            `${API_BASE_URL}/api/comments/${commentId}`,
+            `${API_BASE_URL}/comments/${commentId}`,
             {
               method: "PUT",
               headers: {
@@ -1396,7 +1396,7 @@ const Social = () => {
 
         const response =
           await fetch(
-            `${API_BASE_URL}/api/posts/${postId}`,
+            `${API_BASE_URL}/posts/${postId}`,
             {
               method: "DELETE",
               headers: {
@@ -1487,7 +1487,7 @@ const Social = () => {
 
       const response =
         await fetch(
-          `${API_BASE_URL}/api/comments/${commentId}`,
+          `${API_BASE_URL}/comments/${commentId}`,
           {
             method: "DELETE",
             headers: {
