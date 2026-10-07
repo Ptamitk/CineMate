@@ -130,7 +130,7 @@ const SceneFinder = () => {
 
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/scene-finder/status/${id}`,
+        `${API_BASE_URL}/scene-finder/status/${id}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const data = await response.json();
@@ -273,7 +273,7 @@ const SceneFinder = () => {
       if (video) body.append("video", video);
 
       const response = await fetch(
-        `${API_BASE_URL}/api/scene-finder/analyze`,
+        `${API_BASE_URL}/scene-finder/analyze`,
         {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
