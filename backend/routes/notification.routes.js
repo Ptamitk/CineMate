@@ -2,6 +2,7 @@ const express = require("express");
 
 const {
   getMyNotifications,
+  getUnreadNotificationCount,
   markNotificationAsRead,
 } = require(
   "../controllers/notification.controller"
@@ -20,6 +21,13 @@ router.get(
   "/",
   authMiddleware,
   getMyNotifications
+);
+
+/* GET UNREAD NOTIFICATION COUNT */
+router.get(
+  "/unread-count",
+  authMiddleware,
+  getUnreadNotificationCount
 );
 
 /* MARK NOTIFICATION AS READ */
