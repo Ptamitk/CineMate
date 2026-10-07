@@ -1,5 +1,6 @@
 
 const crypto = require("crypto");
+const jwt = require("jsonwebtoken");
 
 const User = require("../models/user.model");
 
@@ -249,6 +250,170 @@ const login = async (req, res) => {
 };
 
 
+
+const googleLogin = (req, res) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI;
+
+  if (!clientId || !redirectUri) {
+    return res.status(500).json({
+      message:
+        "Google authentication is not configured on the server.",
+    });
+  }
+
+  const state = jwt.sign(
+    { purpose: "google-oauth" },
+    process.env.JWT_SECRET,
+    { expiresIn: "10m" }
+  );
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: "openid email profile",
+    access_type: "offline",
+    prompt: "select_account",
+    state,
+  });
+
+  return res.redirect(
+    "https://accounts.google.com/o/oauth2/v2/auth?" +
+      params.toString()
+  );
+};
+
+const googleCallback = async (req, res) => {
+  const frontendUrl =
+    process.env.FRONTEND_URL ||
+    "http://localhost:5173";
+
+  try {
+    const { code, state } = req.query;
+
+    if (!code || !state) {
+      return res.redirect(
+        frontendUrl +
+          "/login?google_error=" +
+          encodeURIComponent("Google sign-in was cancelled or invalid.")
+      );
+    }
+
+    const statePayload = jwt.verify(
+      state,
+      process.env.JWT_SECRET
+    );
+
+    if (statePayload.purpose !== "google-oauth") {
+      throw new Error("Invalid Google OAuth state.");
+    }
+
+    const tokenResponse = await fetch(
+      "https://oauth2.googleapis.com/token",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          code,
+          client_id: process.env.GOOGLE_CLIENT_ID,
+          client_secret: process.env.GOOGLE_CLIENT_SECRET,
+          redirect_uri: process.env.GOOGLE_REDIRECT_URI,
+          grant_type: "authorization_code",
+        }),
+      }
+    );
+
+    const tokenData = await tokenResponse.json();
+
+    if (!tokenResponse.ok || !tokenData.access_token) {
+      throw new Error(
+        tokenData.error_description ||
+          "Unable to exchange Google authorization code."
+      );
+    }
+
+    const profileResponse = await fetch(
+      "https://www.googleapis.com/oauth2/v3/userinfo",
+      {
+        headers: {
+          Authorization:
+            "Bearer " + tokenData.access_token,
+        },
+      }
+    );
+
+    const profile = await profileResponse.json();
+
+    if (
+      !profileResponse.ok ||
+      !profile.email ||
+      profile.email_verified !== true
+    ) {
+      throw new Error(
+        "Google account email could not be verified."
+      );
+    }
+
+    const normalizedEmail =
+      profile.email.trim().toLowerCase();
+
+    let user = await User.findOne({
+      $or: [
+        { googleId: profile.sub },
+        { email: normalizedEmail },
+      ],
+    });
+
+    if (!user) {
+      user = await User.create({
+        name:
+          profile.name ||
+          normalizedEmail.split("@")[0],
+        email: normalizedEmail,
+        password: null,
+        googleId: profile.sub,
+        isEmailVerified: true,
+        profilePicture: profile.picture || "",
+      });
+    } else {
+      user.googleId = profile.sub;
+      user.isEmailVerified = true;
+
+      if (profile.picture && !user.profilePicture) {
+        user.profilePicture = profile.picture;
+      }
+
+      await user.save();
+    }
+
+    const authToken = generateToken(
+      user._id.toString()
+    );
+
+    return res.redirect(
+      frontendUrl +
+        "/oauth-callback?token=" +
+        encodeURIComponent(authToken)
+    );
+  } catch (error) {
+    console.error(
+      "Google OAuth Error:",
+      error
+    );
+
+    return res.redirect(
+      frontendUrl +
+        "/login?google_error=" +
+        encodeURIComponent(
+          "Google sign-in failed. Please try again."
+        )
+    );
+  }
+};
+
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -421,6 +586,8 @@ module.exports = {
   signup,
   verifyEmail,
   login,
+  googleLogin,
+  googleCallback,
   forgotPassword,
   resetPassword,
   getMe,
