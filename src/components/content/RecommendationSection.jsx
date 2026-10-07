@@ -82,6 +82,7 @@ const RecommendationSection = ({
       <ContentGrid
         items={normalizedItems}
         cinematic
+        animation="snap"
         skeletonCount={6}
       />
 
