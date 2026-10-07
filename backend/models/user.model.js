@@ -21,8 +21,16 @@ const userSchema = new mongoose.Schema(
 
     password: {
       type: String,
-      required: true,
+      required: false,
+      default: null,
       minlength: 8,
+    },
+
+    googleId: {
+      type: String,
+      default: null,
+      unique: true,
+      sparse: true,
     },
 
     isEmailVerified: {
