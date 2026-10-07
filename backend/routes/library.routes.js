@@ -1,0 +1,13 @@
+const express=require("express");
+const auth=require("../middleware/auth.middleware");
+const c=require("../controllers/library.controller");
+const router=express.Router();
+router.get("/watched",auth,c.getWatched);
+router.get("/watched/:contentType/:contentId",auth,c.getWatchedStatus);
+router.post("/watched",auth,c.addWatched);
+router.delete("/watched/:contentType/:contentId",auth,c.removeWatched);
+router.get("/favorites",auth,c.getFavorites);
+router.get("/favorites/:contentType/:contentId",auth,c.getFavoriteStatus);
+router.post("/favorites",auth,c.addFavorite);
+router.delete("/favorites/:contentType/:contentId",auth,c.removeFavorite);
+module.exports=router;
