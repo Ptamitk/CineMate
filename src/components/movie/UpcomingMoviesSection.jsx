@@ -187,7 +187,7 @@ const UpcomingMoviesSection = ({ items = [] }) => {
           {/* Cards */}
 
           <div className="upcoming-movies-grid">
-            <ContentGrid items={items} />
+            <ContentGrid items={items} animation="rise" />
           </div>
 
         </div>
