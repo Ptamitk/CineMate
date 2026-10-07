@@ -140,8 +140,7 @@ const SceneFinder = () => {
           stopPolling();
           setSearching(false);
           setJobId(null);
-          localStorage.removeItem("cinemate_scene_finder_job");
-          setError("Your session has expired. Please login again.");
+            setError("Your session has expired. Please login again.");
           return;
         }
 
@@ -161,8 +160,7 @@ const SceneFinder = () => {
 
       if (job.status === "completed") {
         stopPolling();
-        localStorage.removeItem("cinemate_scene_finder_job");
-        setSearching(false);
+          setSearching(false);
         setJobId(null);
 
         const normalized = normalizeResult(job.result);
@@ -225,21 +223,6 @@ const SceneFinder = () => {
 
     pollRef.current = setTimeout(tick, 0);
   }, [pollStatus, stopPolling]);
-
-  useEffect(() => {
-    const storedJob = localStorage.getItem("cinemate_scene_finder_job");
-    const token = getAuthToken();
-
-    if (storedJob && token) {
-      const runToken = ++analysisRunRef.current;
-      setJobId(storedJob);
-      setSearching(true);
-      analysisStartedAtRef.current = Date.now();
-      startPolling(storedJob, token, runToken);
-    }
-
-    return () => stopPolling();
-  }, [startPolling, stopPolling]);
 
   const selectVideo = (file) => {
     if (!file) return;
@@ -305,7 +288,6 @@ const SceneFinder = () => {
       if (!id) throw new Error("Scene analysis job ID was not returned.");
 
       setJobId(id);
-      localStorage.setItem("cinemate_scene_finder_job", id);
       startPolling(id, token, runToken);
     } catch (e) {
       stopPolling();
