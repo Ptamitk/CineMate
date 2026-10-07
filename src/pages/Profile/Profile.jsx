@@ -70,10 +70,9 @@ const Profile = () => {
     let active = true;
     const fetchLibraryCounts = async () => {
       try {
-        const [watchlist, watched, favorites] = await Promise.all([
+        const [watchlist, watched] = await Promise.all([
           getWatchlist(),
           getLibrary("watched"),
-          getLibrary("favorites"),
         ]);
         if (!active) return;
         setWatchlistCount(Array.isArray(watchlist) ? watchlist.length : 0);
