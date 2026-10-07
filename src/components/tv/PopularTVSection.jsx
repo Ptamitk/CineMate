@@ -189,7 +189,7 @@ const PopularTVSection = ({ items = [] }) => {
           {/* Cards */}
 
           <div className="popular-tv-grid">
-            <ContentGrid items={items} />
+            <ContentGrid items={items} animation="orbit" />
           </div>
 
         </div>
