@@ -1,5 +1,5 @@
 import {useEffect,useState} from "react";
-import {Bookmark,Check,Eye,Heart,LoaderCircle,Star} from "lucide-react";
+import {Check,Eye,Heart,LoaderCircle,Star} from "lucide-react";
 import {getLibraryStatus,addLibrary,removeLibrary,getRatingSummary,saveRating,removeRating} from "../../services/content/userContentService";
 const ContentActions=({content})=>{const[status,setStatus]=useState({});const[loading,setLoading]=useState(true);const[rating,setRating]=useState(null);const[average,setAverage]=useState(0);const[count,setCount]=useState(0);const[busy,setBusy]=useState("");
 const load=async()=>{if(!content?.id||!content?.type)return;try{const[w,f,r]=await Promise.all([getLibraryStatus("watched",content.id,content.type),getLibraryStatus("favorites",content.id,content.type),getRatingSummary(content.type,content.id)]);setStatus({watched:w.active,favorite:f.active});setRating(r.mine);setAverage(r.average);setCount(r.count);}catch(e){console.error(e);}finally{setLoading(false);}};
