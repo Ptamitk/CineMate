@@ -5,6 +5,8 @@ const {
   signup,
   verifyEmail,
   login,
+  googleLogin,
+  googleCallback,
   forgotPassword,
   resetPassword,
   getMe,
@@ -19,6 +21,10 @@ router.post("/signup", signup);
 router.get("/verify-email", verifyEmail);
 
 router.post("/login", login);
+
+router.get("/google", googleLogin);
+
+router.get("/google/callback", googleCallback);
 
 router.post("/forgot-password", forgotPassword);
 
