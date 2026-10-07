@@ -77,7 +77,7 @@ const downloadMediaFile = async (mediaUrl) => {
   );
 
   let response;
-  let outputDirectory = null;
+  let outputDirectory;
   let fileHandle = null;
 
   try {
@@ -106,7 +106,7 @@ const downloadMediaFile = async (mediaUrl) => {
   } catch (error) {
     clearTimeout(timeout);
     if (error?.name === "AbortError") {
-      throw new Error("Video download timed out.");
+      throw new Error("Video download timed out.", { cause: error });
     }
     throw error;
   }
