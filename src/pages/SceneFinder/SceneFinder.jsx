@@ -139,10 +139,17 @@ const SceneFinder = () => {
         if (response.status === 401 || response.status === 403) {
           stopPolling();
           setSearching(false);
+          setJobId(null);
+          localStorage.removeItem("cinemate_scene_finder_job");
           setError("Your session has expired. Please login again.");
           return;
         }
-        throw new Error(data.message || "Unable to read Scene Finder status.");
+
+        const statusError = new Error(
+          data.message || "Unable to read Scene Finder status."
+        );
+        statusError.status = response.status;
+        throw statusError;
       }
 
       // Ignore responses from an older job/run even if that request was
@@ -185,6 +192,24 @@ const SceneFinder = () => {
       // Never let an older request change the state of the current analysis.
       if (runToken !== analysisRunRef.current) return;
       console.error("Scene Finder polling error:", e);
+
+      // Invalid/missing jobs are terminal states for this polling run.
+      // Do not keep hammering the API with a stale job id.
+      if (e?.status === 400 || e?.status === 404) {
+        stopPolling();
+        setSearching(false);
+        setJobId(null);
+        localStorage.removeItem("cinemate_scene_finder_job");
+        setError(
+          e.status === 404
+            ? "This Scene Finder job no longer exists. Please analyze the clip again."
+            : e.message || "Invalid Scene Finder job."
+        );
+        return;
+      }
+
+      // Keep retrying transient network/server errors until the normal
+      // analysis timeout is reached.
       setSearching(true);
     }
   }, [stopPolling]);
@@ -209,6 +234,7 @@ const SceneFinder = () => {
       const runToken = ++analysisRunRef.current;
       setJobId(storedJob);
       setSearching(true);
+      analysisStartedAtRef.current = Date.now();
       startPolling(storedJob, token, runToken);
     }
 
