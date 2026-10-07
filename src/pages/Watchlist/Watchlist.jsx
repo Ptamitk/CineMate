@@ -280,6 +280,7 @@ return ( <main className="min-h-screen bg-black px-5 pb-20 pt-32 text-white sm:p
             )}
             showRemoveButton={true}
             onRemove={handleRemove}
+            animation="snap"
           />
         ) : (
           <div className="rounded-3xl border border-white/10 bg-white/[0.03] px-6 py-20 text-center">

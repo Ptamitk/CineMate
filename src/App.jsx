@@ -31,6 +31,9 @@ import Chat from "./pages/Chat/Chat";
 import Login from "./pages/Login/Login";
 import Signup from "./pages/Signup/Signup";
 import VerifyEmail from "./pages/VerifyEmail/VerifyEmail";
+import ForgotPassword from "./pages/ForgotPassword/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword/ResetPassword";
+import GoogleCallback from "./pages/GoogleCallback/GoogleCallback";
 
 import Watchlist from "./pages/Watchlist/Watchlist";
 import SavedPosts from "./pages/SavedPosts/SavedPosts";
@@ -163,6 +166,21 @@ function AppContent() {
         <Route
           path="/verify-email"
           element={<VerifyEmail />}
+        />
+
+        <Route
+          path="/forgot-password"
+          element={<ForgotPassword />}
+        />
+
+        <Route
+          path="/reset-password"
+          element={<ResetPassword />}
+        />
+
+        <Route
+          path="/oauth-callback"
+          element={<GoogleCallback />}
         />
 
         <Route element={<ProtectedRoute />}>

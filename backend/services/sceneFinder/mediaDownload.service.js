@@ -70,8 +70,6 @@ const downloadMediaFile = async (mediaUrl) => {
     throw new Error("Only HTTP(S) media URLs are supported.");
   }
 
-  await assertPublicHost(url.hostname);
-
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
@@ -79,8 +77,12 @@ const downloadMediaFile = async (mediaUrl) => {
   );
 
   let response;
+  let outputDirectory = null;
+  let fileHandle = null;
 
   try {
+    await assertPublicHost(url.hostname);
+
     let currentUrl = url;
     for (let redirect = 0; redirect <= 3; redirect += 1) {
       await assertPublicHost(currentUrl.hostname);
@@ -102,15 +104,15 @@ const downloadMediaFile = async (mediaUrl) => {
       if (redirect === 3) throw new Error("Too many media redirects.");
     }
   } catch (error) {
+    clearTimeout(timeout);
     if (error?.name === "AbortError") {
       throw new Error("Video download timed out.");
     }
     throw error;
-  } finally {
-    clearTimeout(timeout);
   }
 
   if (!response.ok) {
+    clearTimeout(timeout);
     throw new Error(`Media download failed: ${response.status}`);
   }
 
@@ -118,6 +120,7 @@ const downloadMediaFile = async (mediaUrl) => {
     response.headers.get("content-type") || "";
 
   if (!isVideoContentType(contentType)) {
+    clearTimeout(timeout);
     throw new Error(
       "The supplied URL did not return a supported video file."
     );
@@ -128,16 +131,18 @@ const downloadMediaFile = async (mediaUrl) => {
   );
 
   if (contentLength > MAX_MEDIA_BYTES) {
+    clearTimeout(timeout);
     throw new Error(
-      "Video exceeds the 100 MB processing limit."
+      "Video exceeds the configured processing limit."
     );
   }
 
   if (!response.body) {
+    clearTimeout(timeout);
     throw new Error("Media download returned an empty response body.");
   }
 
-  const outputDirectory = await fs.promises.mkdtemp(
+  outputDirectory = await fs.promises.mkdtemp(
     path.join(os.tmpdir(), "cinemate-reel-")
   );
 
@@ -151,8 +156,6 @@ const downloadMediaFile = async (mediaUrl) => {
     outputDirectory,
     `scene-input${extension}`
   );
-
-  let fileHandle = null;
 
   try {
     fileHandle = await fs.promises.open(outputPath, "w");
@@ -203,6 +206,8 @@ const downloadMediaFile = async (mediaUrl) => {
     }).catch(() => {});
 
     throw error;
+  } finally {
+    clearTimeout(timeout);
   }
 };
 

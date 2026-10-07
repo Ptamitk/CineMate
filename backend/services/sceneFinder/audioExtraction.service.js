@@ -50,6 +50,7 @@ const MAX_AUDIO_BYTES = Math.max(
   )
 );
 
+try {
 await runFFmpeg([
   "-i",
   videoPath,
@@ -82,6 +83,10 @@ return {
 outputDirectory,
 audioPath,
 };
+} catch (error) {
+  await fs.promises.rm(outputDirectory, { recursive: true, force: true }).catch(() => {});
+  throw error;
+}
 };
 
 module.exports = {

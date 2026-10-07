@@ -8,6 +8,20 @@ const {
   cleanupSceneFiles,
 } = require("../services/sceneFinder/sceneCleanup.service");
 
+const MAX_ACTIVE_JOBS_PER_USER = Math.max(
+  1,
+  Number(process.env.SCENE_FINDER_MAX_ACTIVE_JOBS_PER_USER || 2)
+);
+
+const isSupportedHttpUrl = (value) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
 const analyzeScene = async (req, res) => {
   const uploadedVideo = req.file?.path || null;
 
@@ -15,10 +29,36 @@ const analyzeScene = async (req, res) => {
     const { reelUrl } = req.body;
     const normalizedReelUrl = reelUrl?.trim() || "";
 
+    if (normalizedReelUrl && uploadedVideo) {
+      await cleanupSceneFiles({ uploadedVideo });
+      return res.status(400).json({
+        message: "Send either a video file or a video URL, not both.",
+      });
+    }
+
+    if (normalizedReelUrl && !isSupportedHttpUrl(normalizedReelUrl)) {
+      await cleanupSceneFiles({ uploadedVideo });
+      return res.status(400).json({
+        message: "Only HTTP(S) video URLs are supported.",
+      });
+    }
+
     if (!normalizedReelUrl && !uploadedVideo) {
       return res.status(400).json({
         message:
           "Video file or video URL is required.",
+      });
+    }
+
+    const activeJobCount = await SceneFinderJob.countDocuments({
+      user: req.userId,
+      status: { $in: ["pending", "processing"] },
+    });
+
+    if (activeJobCount >= MAX_ACTIVE_JOBS_PER_USER) {
+      await cleanupSceneFiles({ uploadedVideo });
+      return res.status(429).json({
+        message: `You already have ${MAX_ACTIVE_JOBS_PER_USER} Scene Finder jobs running. Please wait for one to finish.`,
       });
     }
 
@@ -133,6 +173,12 @@ const getSceneAnalysisStatus = async (
 ) => {
   try {
     const { jobId } = req.params;
+
+    if (!/^[a-f\d]{24}$/i.test(String(jobId))) {
+      return res.status(400).json({
+        message: "Invalid Scene Finder job ID.",
+      });
+    }
 
     const job = await SceneFinderJob.findOne({
       _id: jobId,
