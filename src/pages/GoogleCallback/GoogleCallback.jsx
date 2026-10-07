@@ -49,7 +49,7 @@ const GoogleCallback = () => {
     };
 
     completeLogin();
-  }, [searchParams, login]);
+  }, []);
 
   if (error) {
     return <Navigate to={"/login?google_error=" + encodeURIComponent(error)} replace />;
