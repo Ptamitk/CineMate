@@ -1,6 +1,7 @@
 const Redis=require("ioredis");
 const localBuckets=new Map();
 const redisClient=process.env.REDIS_URL?new Redis(process.env.REDIS_URL,{maxRetriesPerRequest:1,enableOfflineQueue:false}):null;
+if(redisClient)redisClient.on("error",(error)=>console.error("Redis rate limiter:",error.message));
 const WINDOW_SECONDS=60;
 const MAX_REQUESTS=process.env.API_RATE_LIMIT_MAX?Number(process.env.API_RATE_LIMIT_MAX):180;
 module.exports=async(req,res,next)=>{
