@@ -29,7 +29,7 @@ import { sharePost } from "../../utils/postShares";
 
 import { updatePost } from "../../utils/posts";
 
-const API_BASE_URL = "http://localhost:5000";
+
 
 const getAuthToken = () => {
   try {
