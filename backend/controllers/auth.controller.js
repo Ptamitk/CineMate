@@ -205,6 +205,13 @@ const login = async (req, res) => {
       });
     }
 
+    if (!user.password) {
+      return res.status(401).json({
+        message:
+          "Invalid email or password.",
+      });
+    }
+
     const isPasswordValid =
       await comparePassword(
         password,
