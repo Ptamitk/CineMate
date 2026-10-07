@@ -1,3 +1,4 @@
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
 import { useEffect, useState } from "react";
 import {
@@ -32,7 +33,7 @@ const VerifyEmail = () => {
     const verifyEmail = async () => {
       try {
         const response = await fetch(
-          `http://localhost:5000/api/auth/verify-email?token=${encodeURIComponent(
+          `${API_BASE_URL}/auth/verify-email?token=${encodeURIComponent(
             token
           )}`
         );
