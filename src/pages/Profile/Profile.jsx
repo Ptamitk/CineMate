@@ -1,3 +1,4 @@
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
 import {
   useEffect,
@@ -69,7 +70,7 @@ const Profile = () => {
     const fetchProfile = async () => {
       try {
         const response = await fetch(
-          "http://localhost:5000/api/users/me",
+          "${API_BASE_URL}/users/me",
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -108,7 +109,7 @@ const Profile = () => {
 
     try {
       const response = await fetch(
-        "http://localhost:5000/api/telegram-account/status",
+        "${API_BASE_URL}/telegram-account/status",
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -161,7 +162,7 @@ const Profile = () => {
       setTelegramSuccess("");
 
       const response = await fetch(
-        "http://localhost:5000/api/telegram-account/disconnect",
+        "${API_BASE_URL}/telegram-account/disconnect",
         {
           method: "DELETE",
           headers: {
@@ -285,7 +286,7 @@ const Profile = () => {
       }
 
       const response = await fetch(
-        "http://localhost:5000/api/users/me",
+        "${API_BASE_URL}/users/me",
         {
           method: "PUT",
           headers: {
@@ -335,7 +336,7 @@ const Profile = () => {
         setTelegramCode("");
 
         const response = await fetch(
-          "http://localhost:5000/api/telegram-account/generate-code",
+          "${API_BASE_URL}/telegram-account/generate-code",
           {
             method: "POST",
             headers: {
