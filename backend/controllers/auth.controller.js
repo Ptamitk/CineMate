@@ -1,4 +1,3 @@
-
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 
@@ -256,8 +255,6 @@ const login = async (req, res) => {
   }
 };
 
-
-
 const googleLogin = (req, res) => {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const redirectUri = process.env.GOOGLE_REDIRECT_URI;
@@ -367,6 +364,21 @@ const googleCallback = async (req, res) => {
     const normalizedEmail =
       profile.email.trim().toLowerCase();
 
+    // Google provides the account's display name and profile photo.
+    // If Google has no photo, give the CineMate account a stable
+    // random-style avatar based on the Google account ID.
+    const googleName =
+      profile.name ||
+      [profile.given_name, profile.family_name]
+        .filter(Boolean)
+        .join(" ") ||
+      normalizedEmail.split("@")[0];
+
+    const googleAvatar =
+      profile.picture ||
+      "https://api.dicebear.com/9.x/adventurer/svg?seed=" +
+        encodeURIComponent(profile.sub);
+
     let user = await User.findOne({
       $or: [
         { googleId: profile.sub },
@@ -376,21 +388,29 @@ const googleCallback = async (req, res) => {
 
     if (!user) {
       user = await User.create({
-        name:
-          profile.name ||
-          normalizedEmail.split("@")[0],
+        name: googleName,
         email: normalizedEmail,
         password: null,
         googleId: profile.sub,
         isEmailVerified: true,
-        profilePicture: profile.picture || "",
+        profilePicture: googleAvatar,
       });
     } else {
       user.googleId = profile.sub;
       user.isEmailVerified = true;
 
-      if (profile.picture && !user.profilePicture) {
-        user.profilePicture = profile.picture;
+      // Never overwrite a CineMate-uploaded photo.
+      if (!user.profilePicture) {
+        user.profilePicture = googleAvatar;
+      }
+
+      // If the account was previously created through Google with
+      // a fallback name, use the current Google account name.
+      if (
+        user.name === "CineMate Test" ||
+        !user.name?.trim()
+      ) {
+        user.name = googleName;
       }
 
       await user.save();
@@ -437,7 +457,6 @@ const forgotPassword = async (req, res) => {
       email: normalizedEmail,
     });
 
-    // Do not reveal whether an email exists.
     const successMessage =
       "If an account with that email exists, a password reset link has been sent.";
 
@@ -599,4 +618,3 @@ module.exports = {
   resetPassword,
   getMe,
 };
-
