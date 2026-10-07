@@ -1,10 +1,5 @@
 const Tesseract = require("tesseract.js");
 
-const OCR_TIMEOUT_MS = Math.max(
-  10 * 1000,
-  Number(process.env.SCENE_FINDER_OCR_TIMEOUT_MS || 60 * 1000)
-);
-
 const clean = (value = "") =>
   String(value)
     .replace(/\s+/g, " ")
