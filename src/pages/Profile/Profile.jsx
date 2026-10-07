@@ -65,7 +65,6 @@ const Profile = () => {
 
   const [watchlistCount, setWatchlistCount] = useState(0);
   const [watchedCount, setWatchedCount] = useState(0);
-  const [favoriteCount, setFavoriteCount] = useState(0);
 
   useEffect(() => {
     let active = true;
