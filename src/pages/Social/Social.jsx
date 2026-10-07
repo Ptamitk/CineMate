@@ -82,6 +82,15 @@ const Social = () => {
   const [loading, setLoading] =
     useState(true);
 
+  const [feedPage, setFeedPage] =
+    useState(1);
+
+  const [feedHasMore, setFeedHasMore] =
+    useState(false);
+
+  const [loadingMorePosts, setLoadingMorePosts] =
+    useState(false);
+
   const [postText, setPostText] =
     useState("");
 
@@ -202,9 +211,13 @@ const Social = () => {
      FETCH FEED
   ========================= */
 
-  const fetchPosts = async () => {
+  const fetchPosts = async (page = 1, append = false) => {
     try {
-      setLoading(true);
+      if (append) {
+        setLoadingMorePosts(true);
+      } else {
+        setLoading(true);
+      }
 
       const token =
         getAuthToken();
@@ -216,7 +229,7 @@ const Social = () => {
 
       const response =
         await fetch(
-          `${API_BASE_URL}/posts`,
+          `${API_BASE_URL}/posts?page=${page}&limit=20`,
           {
             method: "GET",
             headers: {
@@ -236,9 +249,13 @@ const Social = () => {
         );
       }
 
-      setPosts(
-        data.posts || []
+      setPosts((currentPosts) =>
+        append
+          ? [...currentPosts, ...(data.posts || [])]
+          : data.posts || []
       );
+      setFeedPage(data.page || page);
+      setFeedHasMore(Boolean(data.hasMore));
     } catch (error) {
       console.error(
         "Social Feed Error:",
@@ -248,6 +265,7 @@ const Social = () => {
       setPosts([]);
     } finally {
       setLoading(false);
+      setLoadingMorePosts(false);
     }
   };
 
@@ -2701,6 +2719,19 @@ const Social = () => {
                 }
               )
             )}
+
+          {feedHasMore && (
+            <div className="flex justify-center border-t border-white/10 px-5 py-6 sm:px-6">
+              <button
+                type="button"
+                onClick={() => fetchPosts(feedPage + 1, true)}
+                disabled={loadingMorePosts}
+                className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-2.5 text-sm font-medium text-white/70 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {loadingMorePosts ? "Loading..." : "Load more posts"}
+              </button>
+            </div>
+          )}
 
           </section>
 
