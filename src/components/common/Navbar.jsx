@@ -588,6 +588,17 @@ const Navbar = () => {
               </Link>
             ))}
 
+            {isAuthenticated && (
+              <>
+                <Link to="/watched" onClick={closeMobileMenu} className="group relative overflow-hidden rounded-xl px-4 py-4">
+                  <span className="relative z-10 flex items-center gap-3 text-base font-medium text-white/70 group-hover:text-white"><Film size={17}/> Watched</span>
+                </Link>
+                <Link to="/favorites" onClick={closeMobileMenu} className="group relative overflow-hidden rounded-xl px-4 py-4">
+                  <span className="relative z-10 flex items-center gap-3 text-base font-medium text-white/70 group-hover:text-white"><Heart size={17}/> Favorites</span>
+                </Link>
+              </>
+            )}
+
             {/* Saved Posts */}
 
             {isAuthenticated && (
