@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import {
   Bell,
   Bookmark,
+  Film,
+  Heart,
   Send,
   LogOut,
   Menu,
@@ -346,6 +348,24 @@ const Navbar = () => {
                 >
                   <Bookmark size={16} />
                   Watchlist
+                </Link>
+
+                <Link
+                  to="/watched"
+                  onClick={() => setIsProfileOpen(false)}
+                  className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-white/60 transition hover:bg-white/5 hover:text-white"
+                >
+                  <Film size={16} />
+                  Watched
+                </Link>
+
+                <Link
+                  to="/favorites"
+                  onClick={() => setIsProfileOpen(false)}
+                  className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-white/60 transition hover:bg-white/5 hover:text-white"
+                >
+                  <Heart size={16} />
+                  Favorites
                 </Link>
 
                 <Link
