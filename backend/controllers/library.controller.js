@@ -15,5 +15,5 @@ const factory = (Model, label) => ({
 const watched=factory(Watched,"Watched");
 const favorites=factory(Favorite,"Favorites");
 
-const listWatchlist=async(req,res)=>{try{const items=await Watchlist.find({user:req.userId}).sort({createdAt:-1}).lean();res.json({items});}catch(e){res.status(500).json({message:"Unable to fetch watchlist."});}};
+const listWatchlist=async(req,res)=>{try{const items=await Watchlist.find({user:req.userId}).sort({createdAt:-1}).lean();res.json({items});}catch { res.status(500).json({message:"Unable to fetch watchlist."}); }};
 module.exports={getWatched:watched.list,getWatchedStatus:watched.status,addWatched:watched.add,removeWatched:watched.remove,getFavorites:favorites.list,getFavoriteStatus:favorites.status,addFavorite:favorites.add,removeFavorite:favorites.remove,listWatchlist};
