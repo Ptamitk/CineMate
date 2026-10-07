@@ -1,4 +1,3 @@
-
 import {
   Link,
   useNavigate,
@@ -107,8 +106,6 @@ const Login = () => {
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-black px-5 py-32 text-white">
-
-      {/* BACKGROUND AMBIENT LIGHTS */}
       <motion.div
         className="pointer-events-none absolute left-1/2 top-1/2 h-[550px] w-[550px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/[0.035] blur-3xl"
         animate={{
@@ -148,7 +145,6 @@ const Login = () => {
         }}
       />
 
-      {/* MAIN CONTENT */}
       <motion.div
         className="relative z-10 w-full max-w-md"
         initial={{ opacity: 0, y: 50, scale: 0.96 }}
@@ -158,8 +154,6 @@ const Login = () => {
           ease: [0.22, 1, 0.36, 1],
         }}
       >
-
-        {/* HEADING */}
         <motion.div
           className="mb-8 text-center"
           initial={{ opacity: 0, y: 25 }}
@@ -212,7 +206,6 @@ const Login = () => {
           </motion.p>
         </motion.div>
 
-        {/* CARD */}
         <motion.div
           className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl backdrop-blur-xl sm:p-8"
           initial={{ opacity: 0, y: 35 }}
@@ -228,8 +221,6 @@ const Login = () => {
               "0 25px 80px rgba(255,255,255,0.04)",
           }}
         >
-
-          {/* CARD SHINE */}
           <motion.div
             className="pointer-events-none absolute -left-1/2 top-0 h-full w-1/2 bg-gradient-to-r from-transparent via-white/[0.04] to-transparent"
             animate={{
@@ -247,8 +238,6 @@ const Login = () => {
             className="relative space-y-5"
             onSubmit={handleSubmit}
           >
-
-            {/* EMAIL */}
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -287,7 +276,6 @@ const Login = () => {
               </motion.div>
             </motion.div>
 
-            {/* PASSWORD */}
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -345,14 +333,12 @@ const Login = () => {
               </div>
             </motion.div>
 
-            {/* ERROR */}
             {error && (
               <div className="rounded-xl border border-red-400/20 bg-red-400/[0.06] px-4 py-3 text-sm text-red-300">
                 {error}
               </div>
             )}
 
-            {/* OPTIONS */}
             <motion.div
               className="flex items-center justify-between gap-4 text-xs"
               initial={{ opacity: 0 }}
@@ -376,7 +362,6 @@ const Login = () => {
               </Link>
             </motion.div>
 
-            {/* LOGIN BUTTON */}
             <motion.button
               type="submit"
               disabled={loading}
@@ -441,13 +426,33 @@ const Login = () => {
             whileHover={!loading ? { scale: 1.01 } : {}}
             whileTap={!loading ? { scale: 0.98 } : {}}
           >
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs font-bold text-black">
-              G
-            </span>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 48 48"
+              aria-hidden="true"
+              className="shrink-0"
+            >
+              <path
+                fill="#FFC107"
+                d="M43.611 20.083H42V20H24v8h11.303C33.655 32.657 29.148 36 24 36c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.247 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"
+              />
+              <path
+                fill="#FF3D00"
+                d="m6.306 14.691 6.571 4.819C14.45 16.108 18.96 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.247 4 24 4c-7.682 0-14.238 4.326-17.694 10.691z"
+              />
+              <path
+                fill="#4CAF50"
+                d="M24 44c5.147 0 9.943-1.973 13.478-5.192l-6.219-5.263C29.183 35.091 26.715 36 24 36c-5.127 0-9.625-3.326-11.196-7.946l-6.522 5.025C9.751 39.556 16.364 44 24 44z"
+              />
+              <path
+                fill="#1976D2"
+                d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.044 5.545l.003-.002 6.219 5.263C37.196 39.214 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"
+              />
+            </svg>
             Continue with Google
           </motion.button>
 
-          {/* SIGNUP */}
           <motion.div
             className="mt-7 border-t border-white/10 pt-6 text-center text-sm text-white/40"
             initial={{ opacity: 0 }}
@@ -478,4 +483,3 @@ const Login = () => {
 };
 
 export default Login;
-
