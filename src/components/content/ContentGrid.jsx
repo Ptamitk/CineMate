@@ -139,7 +139,7 @@ const ContentGrid = ({
           scrollTrigger: {
             trigger: grid,
             start: isMobile ? "top 92%" : "top 86%",
-            toggleActions: "play none none reverse",
+            toggleActions: "play reverse play reverse",
           },
         }
       );
