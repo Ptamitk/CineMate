@@ -33,6 +33,7 @@ import Signup from "./pages/Signup/Signup";
 import VerifyEmail from "./pages/VerifyEmail/VerifyEmail";
 import ForgotPassword from "./pages/ForgotPassword/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword/ResetPassword";
+import GoogleCallback from "./pages/GoogleCallback/GoogleCallback";
 
 import Watchlist from "./pages/Watchlist/Watchlist";
 import SavedPosts from "./pages/SavedPosts/SavedPosts";
@@ -175,6 +176,11 @@ function AppContent() {
         <Route
           path="/reset-password"
           element={<ResetPassword />}
+        />
+
+        <Route
+          path="/oauth-callback"
+          element={<GoogleCallback />}
         />
 
         <Route element={<ProtectedRoute />}>
