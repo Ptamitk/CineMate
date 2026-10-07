@@ -4,43 +4,21 @@ const Notification = require("../models/notification.model");
    GET MY NOTIFICATIONS
 ========================= */
 
-const getMyNotifications = async (
-  req,
-  res
-) => {
+const getMyNotifications = async (req, res) => {
   try {
-    const notifications =
-      await Notification.find({
-        recipient: req.userId,
-      })
-        .populate(
-          "sender",
-          "name profilePicture"
-        )
-        .populate(
-          "post",
-          "text mediaUrl contentId contentType"
-        )
-        .sort({
-          createdAt: -1,
-        });
-
-    return res.status(200).json({
-      notifications,
-    });
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 30));
+    const filter = { recipient: req.userId };
+    const [notifications, total] = await Promise.all([
+      Notification.find(filter).populate("sender", "name profilePicture").populate("post", "text mediaUrl contentId contentType").sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      Notification.countDocuments(filter),
+    ]);
+    return res.status(200).json({ notifications, page, limit, hasMore: page * limit < total, total });
   } catch (error) {
-    console.error(
-      "Get Notifications Error:",
-      error
-    );
-
-    return res.status(500).json({
-      message:
-        "Something went wrong while fetching notifications.",
-    });
+    console.error("Get Notifications Error:", error);
+    return res.status(500).json({ message: "Something went wrong while fetching notifications." });
   }
 };
-
 /* =========================
    MARK ONE AS READ
 ========================= */
