@@ -26,7 +26,7 @@ const getToken = () => {
 };
 
 export const getNotifications =
-  async () => {
+  async (page = 1, limit = 30) => {
     try {
       const token = getToken();
 
@@ -35,7 +35,7 @@ export const getNotifications =
       }
 
       const response = await fetch(
-        API_URL + "?page=1&limit=50",
+        API_URL + "?page=" + page + "&limit=" + limit,
         {
           method: "GET",
           headers: {
@@ -55,7 +55,7 @@ export const getNotifications =
         );
       }
 
-      return data.notifications || [];
+      return data;
     } catch (error) {
       console.error(
         "Get Notifications Error:",
