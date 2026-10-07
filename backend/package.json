@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node --test tests/sceneFinder/*.test.js"
+    "test": "node --test tests/sceneFinder/*.test.js",
+    "load:health": "node tests/load/health.load.js"
   },
   "keywords": [],
   "author": "",
