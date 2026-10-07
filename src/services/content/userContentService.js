@@ -1,0 +1,15 @@
+const API_BASE_URL=import.meta.env.VITE_API_BASE_URL||"http://localhost:5000/api";
+const token=()=>{try{return JSON.parse(localStorage.getItem("cinemate_auth")||"{}")?.token||null;}catch{return null;}};
+const request=async(path,options={})=>{const t=token();if(!t)throw new Error("Please log in to use your library.");const r=await fetch(API_BASE_URL+path,{...options,headers:{"Content-Type":"application/json",Authorization:"Bearer "+t,...(options.headers||{})}});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.message||"Request failed.");return d;};
+const itemBody=c=>JSON.stringify({contentId:c.id,contentType:c.type,title:c.title,image:c.image||"",year:c.year||"",rating:c.rating||""});
+export const getLibrary=async(type)=>{const d=await request("/library/"+type);return d.items||[];};
+export const getLibraryStatus=async(type,id,contentType)=>request("/library/"+type+"/"+contentType+"/"+id);
+export const addLibrary=async(type,c)=>request("/library/"+type,{method:"POST",body:itemBody(c)});
+export const removeLibrary=async(type,id,contentType)=>request("/library/"+type+"/"+contentType+"/"+id,{method:"DELETE"});
+export const getRatingSummary=async(type,id)=>request("/content/"+type+"/"+id+"/ratings");
+export const saveRating=async(type,id,value)=>request("/content/"+type+"/"+id+"/ratings",{method:"PUT",body:JSON.stringify({value})});
+export const removeRating=async(type,id)=>request("/content/"+type+"/"+id+"/ratings",{method:"DELETE"});
+export const getReviews=async(type,id)=>{const r=await fetch(API_BASE_URL+"/content/"+type+"/"+id+"/reviews");const d=await r.json();if(!r.ok)throw new Error(d.message||"Unable to load reviews.");return d.reviews||[];};
+export const createReview=async(type,id,body)=>request("/content/"+type+"/"+id+"/reviews",{method:"POST",body:JSON.stringify(body)});
+export const updateReview=async(type,id,reviewId,body)=>request("/content/"+type+"/"+id+"/reviews/"+reviewId,{method:"PUT",body:JSON.stringify(body)});
+export const deleteReview=async(type,id,reviewId)=>request("/content/"+type+"/"+id+"/reviews/"+reviewId,{method:"DELETE"});
