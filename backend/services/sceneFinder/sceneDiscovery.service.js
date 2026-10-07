@@ -131,16 +131,38 @@ const extractQueries = ({ caption = "", ocr = "", speech = "" }) => {
     });
 
   const querySet = new Set();
-  for (const line of candidates.slice(0, 6)) {
-    const words = line.split(/\s+/);
-    querySet.add(line);
-    if (words.length >= 2 && words.length <= 8) {
-      querySet.add(words.slice(0, Math.min(5, words.length)).join(" "));
-      querySet.add(words.slice(-Math.min(5, words.length)).join(" "));
+
+  // Keep the original high-quality lines, but also build short OCR
+  // combinations. OCR on subtitles/posters is often fragmented across
+  // frames (for example: "Dhurandhar" + "The Revenge" or individual words).
+  // Searching only the raw line can therefore miss the actual title.
+  for (const line of candidates.slice(0, 8)) {
+    const words = line.split(/\s+/).filter(word => word.length >= 2);
+
+    if (words.length >= 2 && words.length <= 10) {
+      querySet.add(words.join(" "));
+      querySet.add(words.slice(0, Math.min(6, words.length)).join(" "));
+      querySet.add(words.slice(-Math.min(6, words.length)).join(" "));
+    }
+
+    // Generate adjacent 2-5 word windows, while avoiding very tiny OCR
+    // fragments. This is generic and works for titles in any language.
+    for (let size = Math.min(5, words.length); size >= 2; size -= 1) {
+      for (let start = 0; start + size <= words.length; start += 1) {
+        const window = words.slice(start, start + size).join(" ");
+        if (isUsefulQuery(window)) querySet.add(window);
+        if (querySet.size >= 24) break;
+      }
+      if (querySet.size >= 24) break;
     }
   }
 
-  return unique([...querySet]).slice(0, 10);
+  // Caption is usually much stronger than scene dialogue. Preserve a cleaned
+  // caption as a discovery query even when OCR is noisy.
+  const cleanedCaption = cleanSignal(caption);
+  if (isUsefulQuery(cleanedCaption)) querySet.add(cleanedCaption);
+
+  return unique([...querySet]).slice(0, 12);
 };
 
 let broadDiscoveryCache = null;
@@ -290,7 +312,18 @@ const discoverSceneCandidates = async ({ caption = "", ocrText = "", speechText 
   let candidates = rankedSearch.slice(0, searchLimit).map(item => item.candidate);
   const bestRetrieval = rankedSearch[0]?.retrievalScore || 0;
 
-  if (candidates.length < 32 || bestRetrieval < 0.58 || queries.length === 0) {
+  // Never trust a small OCR/search result set by itself. A garbage OCR
+  // fragment can still return 30+ unrelated TMDB titles, which previously
+  // caused broad discovery to be skipped entirely. Always augment when the
+  // text signal is weak or the search pool is narrow.
+  const usefulQueryCount = queries.filter(isUsefulQuery).length;
+  const weakTextDiscovery =
+    queries.length === 0 ||
+    usefulQueryCount < 2 ||
+    bestRetrieval < 0.72 ||
+    candidates.length < 64;
+
+  if (weakTextDiscovery) {
     const broad = await discoverSlices();
     candidates = dedupe([...candidates, ...broad]);
   }
