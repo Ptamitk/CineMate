@@ -34,6 +34,34 @@ const PopularMovies = ({ items = [] }) => {
         },
       });
 
+      gsap.fromTo(
+        ".popular-movie-card",
+        {
+          y: (i) => (i % 2 ? 1 : -1) * (70 + (i % 3) * 35),
+          x: (i) => (i % 3 === 0 ? -1 : 1) * (45 + (i % 4) * 25),
+          rotation: (i) => (i % 2 ? 1 : -1) * (6 + (i % 3) * 2),
+          scale: 0.86,
+          opacity: 0,
+          filter: "blur(6px)",
+        },
+        {
+          y: 0,
+          x: 0,
+          rotation: 0,
+          scale: 1,
+          opacity: 1,
+          filter: "blur(0px)",
+          duration: 1.1,
+          stagger: { each: 0.08, from: "center" },
+          ease: "expo.out",
+          scrollTrigger: {
+            trigger: section,
+            start: "top 82%",
+            toggleActions: "play none none reverse",
+          },
+        }
+      );
+
       gsap.from(".popular-title", {
         y: 60,
         opacity: 0,
@@ -65,7 +93,7 @@ const PopularMovies = ({ items = [] }) => {
           <Link
             key={movie.id}
             to={`/movie/${movie.id}`}
-            className="group relative h-[58vh] w-[250px] shrink-0 overflow-hidden rounded-3xl border border-white/10 bg-white/5 sm:w-[300px] md:h-[65vh] md:w-[320px] lg:w-[380px]"
+            className="popular-movie-card group relative h-[58vh] w-[250px] shrink-0 overflow-hidden rounded-3xl border border-white/10 bg-white/5 sm:w-[300px] md:h-[65vh] md:w-[320px] lg:w-[380px]"
           >
             {movie.image ? (
               <img
