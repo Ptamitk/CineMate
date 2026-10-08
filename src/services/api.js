@@ -8,7 +8,7 @@ export const apiFetch = async (endpoint, options = {}) => {
     const fetchOptions = { ...options };
     delete fetchOptions.timeoutMs;
     if (!fetchOptions.signal) fetchOptions.signal = controller.signal;
-    fetchOptions.headers = { "Content-Type": "application/json", ...(fetchOptions.headers || {}) };
+    if (!(fetchOptions.body instanceof FormData)) {\n      fetchOptions.headers = { "Content-Type": "application/json", ...(fetchOptions.headers || {}) };\n    } else if (fetchOptions.headers?.["Content-Type"]) {\n      const headers = { ...fetchOptions.headers };\n      delete headers["Content-Type"];\n      fetchOptions.headers = headers;\n    }
     const response = await fetch(API_BASE_URL + endpoint, fetchOptions);
     const contentType = response.headers.get("content-type") || "";
     const data = contentType.includes("application/json") ? await response.json() : await response.text();
