@@ -1,7 +1,9 @@
 
+
+
 import {
   useEffect,
-  useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -15,10 +17,13 @@ import {
   Send,
   User,
   X,
+  HelpCircle,
 } from "lucide-react";
 
 import { useAuth } from "../../context/AuthContext";
 import { getWatchlist } from "../../utils/watchlist";
+import { getLibrary } from "../../services/content/userContentService";
+import { apiFetch } from "../../services/api";
 
 const Profile = () => {
   const { user, token, updateUser } = useAuth();
@@ -49,30 +54,44 @@ const Profile = () => {
   const [telegramSuccess, setTelegramSuccess] =
     useState("");
 
-  const watchlistCount = useMemo(() => {
-    return getWatchlist().length;
-  }, []);
+  const [telegramConnected, setTelegramConnected] =
+    useState(false);
+  const [telegramBot, setTelegramBot] = useState(null);
+  const [telegramStatusLoading, setTelegramStatusLoading] =
+    useState(true);
+  const [telegramDisconnecting, setTelegramDisconnecting] =
+    useState(false);
+  const [showTelegramGuide, setShowTelegramGuide] = useState(false);
+  const telegramStatusRequestRef = useRef(0);
+
+  const [watchlistCount, setWatchlistCount] = useState(0);
+  const [watchedCount, setWatchedCount] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    const fetchLibraryCounts = async () => {
+      try {
+        const [watchlist, watched] = await Promise.all([
+          getWatchlist(),
+          getLibrary("watched"),
+        ]);
+        if (!active) return;
+        setWatchlistCount(Array.isArray(watchlist) ? watchlist.length : 0);
+        setWatchedCount(Array.isArray(watched) ? watched.length : 0);
+      } catch (error) {
+        console.error("Library Count Error:", error);
+      }
+    };
+    if (token) fetchLibraryCounts();
+    return () => { active = false; };
+  }, [token]);
 
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const response = await fetch(
-          "http://localhost:5000/api/users/me",
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
+        const data = await apiFetch("/users/me", { headers: { Authorization: `Bearer ${token}` } });
 
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.message ||
-              "Failed to fetch profile."
-          );
-        }
+        
 
         setProfile(data.user);
         updateUser(data.user);
@@ -88,6 +107,70 @@ const Profile = () => {
       fetchProfile();
     }
   }, [token, updateUser]);
+
+  const fetchTelegramStatus = async () => {
+    if (!token) return;
+
+    const requestId = ++telegramStatusRequestRef.current;
+
+    try {
+      const data = await apiFetch("/telegram-account/status", { headers: { Authorization: `Bearer ${token}` } });
+
+      
+
+      // Ignore an older polling response that started before a disconnect.
+      if (requestId !== telegramStatusRequestRef.current) return;
+
+      setTelegramConnected(Boolean(data.connected));
+      setTelegramBot(data.bot || null);
+    } catch (error) {
+      console.error("Telegram Status Error:", error);
+      setTelegramError(
+        error.message || "Unable to check Telegram connection."
+      );
+    } finally {
+      setTelegramStatusLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!token) return;
+
+    fetchTelegramStatus();
+
+    const interval = setInterval(() => {
+      fetchTelegramStatus();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  // fetchTelegramStatus is intentionally kept outside the effect; the polling interval
+  // uses the latest token while request-id guards prevent stale responses.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  const handleDisconnectTelegram = async () => {
+    try {
+      setTelegramDisconnecting(true);
+      // Invalidate any in-flight status request so it cannot restore
+      // the connected state after a successful disconnect.
+      telegramStatusRequestRef.current += 1;
+      setTelegramError("");
+      setTelegramSuccess("");
+
+      await apiFetch("/telegram-account/disconnect", { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+
+setTelegramConnected(false);
+      setTelegramCode("");
+      setTelegramSuccess("Telegram disconnected successfully.");
+    } catch (error) {
+      console.error("Telegram Disconnect Error:", error);
+      setTelegramError(
+        error.message || "Unable to disconnect Telegram."
+      );
+    } finally {
+      setTelegramDisconnecting(false);
+    }
+  };
 
   const displayName =
     profile?.name?.trim() ||
@@ -182,27 +265,9 @@ const Profile = () => {
         );
       }
 
-      const response = await fetch(
-        "http://localhost:5000/api/users/me",
-        {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
-        }
-      );
+      const data = await apiFetch("/users/me", { method: "PUT", headers: { Authorization: `Bearer ${token}` }, body: formData });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.message ||
-            "Failed to update profile."
-        );
-      }
-
-      setProfile(data.user);
+setProfile(data.user);
       updateUser(data.user);
 
       setIsEditing(false);
@@ -232,29 +297,11 @@ const Profile = () => {
         setTelegramSuccess("");
         setTelegramCode("");
 
-        const response = await fetch(
-          "http://localhost:5000/api/telegram-account/generate-code",
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
+        const data = await apiFetch("/telegram-account/generate-code", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
 
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.message ||
-              "Failed to generate Telegram code."
-          );
-        }
-
-        setTelegramCode(data.code);
-
+setTelegramCode(data.code);
         setTelegramSuccess(
-          "Pairing code generated. It will expire in 10 minutes."
+          "Pairing code generated. Send it to the CineMate Telegram bot to connect."
         );
       } catch (error) {
         console.error(
@@ -538,7 +585,7 @@ const Profile = () => {
                 </p>
 
                 <p className="mt-1 text-2xl font-bold">
-                  0
+                  {watchedCount}
                 </p>
 
               </div>
@@ -575,106 +622,126 @@ const Profile = () => {
         ========================= */}
 
         <section className="mt-6 rounded-3xl border border-white/10 bg-white/[0.03] p-6 sm:p-8">
-
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-
             <div>
-
               <p className="text-xs uppercase tracking-[0.2em] text-white/30">
                 CineMate Control
               </p>
-
-              <h2 className="mt-2 text-2xl font-bold sm:text-3xl">
-                Connect Telegram
-              </h2>
-
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/45">
-                Connect your Telegram account with
-                CineMate. After connecting, you can
-                send searches from Telegram and see
-                the results directly inside CineMate.
-              </p>
-
-            </div>
-
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
-              <Send size={23} />
-            </div>
-
-          </div>
-
-          <div className="mt-7 rounded-2xl border border-white/10 bg-black/30 p-5 sm:p-6">
-
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-
-              <div>
-
-                <p className="text-sm font-medium text-white/80">
-                  Generate pairing code
-                </p>
-
-                <p className="mt-1 text-xs leading-5 text-white/35">
-                  Generate a temporary code and use
-                  it with the CineMate Telegram bot.
-                </p>
-
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <h2 className="text-2xl font-bold sm:text-3xl">Telegram</h2>
+                <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wider ${
+                  telegramConnected
+                    ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-300"
+                    : "border-white/10 bg-white/[0.04] text-white/40"
+                }`}>
+                  {telegramStatusLoading
+                    ? "Checking..."
+                    : telegramConnected
+                      ? "Connected"
+                      : "Disconnected"}
+                </span>
               </div>
-
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/45">
+                Connect your Telegram account with CineMate to search movies and TV shows from Telegram and receive the results inside CineMate.
+              </p>
+              {telegramBot?.username && (
+                <p className="mt-3 text-xs text-white/30">
+                  Bot: <span className="text-white/60">@{telegramBot.username}</span>
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={
-                  handleGenerateTelegramCode
-                }
-                disabled={telegramLoading}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-white/85 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => setShowTelegramGuide((value) => !value)}
+                className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.06] px-4 py-3 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/[0.1]"
               >
-                {telegramLoading ? (
-                  <>
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/20 border-t-black" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Send size={16} />
-                    Generate Code
-                  </>
-                )}
+                <HelpCircle size={16} />
+                How to Connect
               </button>
-
-            </div>
-
-            {telegramCode && (
-              <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-
-                <p className="text-xs uppercase tracking-[0.15em] text-white/30">
-                  Your pairing code
-                </p>
-
-                <p className="mt-3 break-all font-mono text-2xl font-bold tracking-[0.2em] text-white sm:text-3xl">
-                  {telegramCode}
-                </p>
-
-                <p className="mt-3 text-xs leading-5 text-white/35">
-                  This code expires in 10 minutes.
-                </p>
-
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
+                <Send size={23} />
               </div>
+            </div>
+          </div>
+
+          {showTelegramGuide && (
+            <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.025] p-5 sm:p-6">
+              <p className="text-xs uppercase tracking-[0.2em] text-white/30">Telegram Setup</p>
+              <h3 className="mt-2 text-xl font-bold">Connect in a few steps</h3>
+              <div className="mt-5 grid gap-3 sm:grid-cols-4">
+                <div className="rounded-xl border border-white/10 bg-black/30 p-4"><span className="text-xs text-white/30">01</span><p className="mt-2 text-sm font-semibold">Generate a code</p><p className="mt-1 text-xs leading-5 text-white/40">Click Generate Code and copy your temporary pairing code.</p></div>
+                <div className="rounded-xl border border-white/10 bg-black/30 p-4"><span className="text-xs text-white/30">02</span><p className="mt-2 text-sm font-semibold">Open Telegram</p><p className="mt-1 text-xs leading-5 text-white/40">Open the CineMate Telegram bot.</p></div>
+                <div className="rounded-xl border border-white/10 bg-black/30 p-4"><span className="text-xs text-white/30">03</span><p className="mt-2 text-sm font-semibold">Send the command</p><p className="mt-1 text-xs leading-5 text-white/40">Send <span className="font-mono text-white/60">/connect YOUR_CODE</span> to the bot.</p></div>
+                <div className="rounded-xl border border-white/10 bg-black/30 p-4"><span className="text-xs text-white/30">04</span><p className="mt-2 text-sm font-semibold">You are connected</p><p className="mt-1 text-xs leading-5 text-white/40">This page automatically updates to Connected.</p></div>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-7 rounded-2xl border border-white/10 bg-black/30 p-5 sm:p-6">
+            {telegramConnected ? (
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-emerald-300">Telegram is connected</p>
+                  <p className="mt-1 text-xs leading-5 text-white/35">
+                    Your Telegram searches are linked to this CineMate account.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDisconnectTelegram}
+                  disabled={telegramDisconnecting}
+                  className="rounded-xl border border-red-400/20 bg-red-400/[0.05] px-5 py-3 text-sm font-semibold text-red-300 transition hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {telegramDisconnecting ? "Disconnecting..." : "Disconnect Telegram"}
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-white/80">Connect your Telegram</p>
+                    <p className="mt-1 text-xs leading-5 text-white/35">
+                      Generate a temporary code, then send <span className="font-mono text-white/60">/connect YOUR_CODE</span> to the CineMate Telegram bot.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleGenerateTelegramCode}
+                    disabled={telegramLoading}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-white/85 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {telegramLoading ? (
+                      <>
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/20 border-t-black" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Send size={16} />
+                        Generate Code
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {telegramCode && (
+                  <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                    <p className="text-xs uppercase tracking-[0.15em] text-white/30">Your pairing code</p>
+                    <p className="mt-3 break-all font-mono text-2xl font-bold tracking-[0.2em] text-white sm:text-3xl">{telegramCode}</p>
+                    <p className="mt-3 text-xs leading-5 text-white/35">Expires in 10 minutes. Send <span className="font-mono text-white/60">/connect {telegramCode}</span> to the bot.</p>
+                  </div>
+                )}
+              </>
             )}
 
             {telegramSuccess && (
-              <div className="mt-4 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.05] px-4 py-3 text-sm text-emerald-300">
-                {telegramSuccess}
-              </div>
+              <div className="mt-4 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.05] px-4 py-3 text-sm text-emerald-300">{telegramSuccess}</div>
             )}
-
             {telegramError && (
-              <div className="mt-4 rounded-xl border border-red-400/20 bg-red-400/[0.05] px-4 py-3 text-sm text-red-300">
-                {telegramError}
-              </div>
+              <div className="mt-4 rounded-xl border border-red-400/20 bg-red-400/[0.05] px-4 py-3 text-sm text-red-300">{telegramError}</div>
             )}
-
           </div>
-
         </section>
 
         {/* =========================

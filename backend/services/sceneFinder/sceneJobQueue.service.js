@@ -15,8 +15,8 @@ const PROCESSING_STALE_MS = Math.max(
 );
 
 const MAX_QUEUE_RETRIES = Math.max(
-  3,
-  Number(process.env.SCENE_FINDER_MAX_QUEUE_RETRIES || 8)
+  1,
+  Number(process.env.SCENE_FINDER_MAX_QUEUE_RETRIES || 4)
 );
 
 const RETRY_BASE_DELAY_MS = Math.max(
@@ -52,10 +52,22 @@ const QUEUE_RECOVERY_BATCH_SIZE = Math.max(
   Number(process.env.SCENE_FINDER_QUEUE_RECOVERY_BATCH_SIZE || 50)
 );
 
-const getRedisConnection = () => ({
-  url: REDIS_URL,
-  maxRetriesPerRequest: null,
-});
+const getRedisConnection = () => {
+  const url = new URL(REDIS_URL);
+
+  return {
+    host: url.hostname,
+    port: Number(url.port || 6379),
+    username: decodeURIComponent(url.username || ""),
+    password: decodeURIComponent(url.password || ""),
+    db: url.pathname && url.pathname !== "/"
+      ? Number(url.pathname.slice(1))
+      : 0,
+    maxRetriesPerRequest: null,
+    enableReadyCheck: true,
+    ...(url.protocol === "rediss:" ? { tls: {} } : {}),
+  };
+};
 
 const initializeDistributedQueue = async () => {
   if (!USE_DISTRIBUTED_QUEUE || distributedQueueReady) return false;
@@ -83,14 +95,15 @@ const initializeDistributedQueue = async () => {
       },
     });
 
+    const path = require("path");
+    const processorFile = path.join(
+      __dirname,
+      "../../workers/sceneFinder.processor.js"
+    );
+
     distributedWorker = new Worker(
       "cinemate-scene-finder",
-      async (job) => {
-        await processSceneFinderJob(
-          job.data.jobId,
-          job.data.uploadedVideo || null
-        );
-      },
+      processorFile,
       {
         connection,
         concurrency: MAX_CONCURRENT_JOBS,
@@ -101,6 +114,10 @@ const initializeDistributedQueue = async () => {
         stalledInterval: Math.max(
           15 * 1000,
           Number(process.env.SCENE_FINDER_STALLED_INTERVAL_MS || 30 * 1000)
+        ),
+        maxStalledCount: Math.max(
+          1,
+          Number(process.env.SCENE_FINDER_MAX_STALLED_COUNT || 2)
         ),
       }
     );
@@ -117,8 +134,15 @@ const initializeDistributedQueue = async () => {
       );
     });
 
+    distributedWorker.on("stalled", (jobId) => {
+      console.warn("Scene Finder distributed job stalled:", jobId);
+    });
+
     distributedWorker.on("error", (error) => {
-      console.error("Scene Finder distributed worker error:", error.message);
+      console.error(
+        "Scene Finder distributed worker error:",
+        error.message
+      );
     });
 
     distributedQueueReady = true;
@@ -138,13 +162,7 @@ const initializeDistributedQueue = async () => {
       error.message
     );
 
-    // Fail closed in production rather than silently pretending that
-    // a distributed queue exists.
-    if (process.env.NODE_ENV === "production") {
-      throw error;
-    }
-
-    return false;
+    throw error;
   }
 };
 
@@ -169,12 +187,8 @@ const enqueueLocal = (jobId, uploadedVideo = null) => {
 const scheduleLocalRetry = (jobId, uploadedVideo) => {
   const attempts = (retryCounts.get(jobId) || 0) + 1;
 
-  if (attempts > MAX_QUEUE_RETRIES) {
+  if (attempts >= MAX_QUEUE_RETRIES) {
     retryCounts.delete(jobId);
-    console.error(
-      "Scene Finder local job exhausted retries; leaving it recoverable:",
-      jobId
-    );
     return;
   }
 
@@ -202,7 +216,17 @@ const runLocalJob = async (next) => {
   activeJobs.add(next.jobId);
 
   try {
-    await processSceneFinderJob(next.jobId, next.uploadedVideo);
+    const attemptsMade = retryCounts.get(next.jobId) || 0;
+
+    await processSceneFinderJob(
+      next.jobId,
+      next.uploadedVideo,
+      {
+        attemptsMade,
+        maxAttempts: MAX_QUEUE_RETRIES,
+      }
+    );
+
     retryCounts.delete(next.jobId);
   } catch (error) {
     console.error("Scene Finder Queue Job Error:", error.message);
@@ -237,6 +261,12 @@ const drainLocalQueue = () => {
 };
 
 const enqueueSceneFinderJob = async (jobId, uploadedVideo = null) => {
+  if (process.env.NODE_ENV === "production" && !USE_DISTRIBUTED_QUEUE) {
+    throw new Error(
+      "Scene Finder requires SCENE_FINDER_REDIS_URL in production."
+    );
+  }
+
   if (USE_DISTRIBUTED_QUEUE) {
     await initializeDistributedQueue();
 
@@ -247,10 +277,7 @@ const enqueueSceneFinderJob = async (jobId, uploadedVideo = null) => {
     }
 
     const normalizedJobId = String(jobId);
-
-    const existing = await distributedQueue.getJob(
-      normalizedJobId
-    );
+    const existing = await distributedQueue.getJob(normalizedJobId);
 
     if (
       existing &&
@@ -278,59 +305,14 @@ const enqueueSceneFinderJob = async (jobId, uploadedVideo = null) => {
 };
 
 const recoverSceneFinderJobs = async () => {
+  if (process.env.NODE_ENV === "production" && !USE_DISTRIBUTED_QUEUE) {
+    throw new Error(
+      "Scene Finder production recovery requires SCENE_FINDER_REDIS_URL."
+    );
+  }
+
   if (USE_DISTRIBUTED_QUEUE) {
     await initializeDistributedQueue();
-
-    if (!distributedQueue) {
-      throw new Error("Scene Finder distributed queue is unavailable.");
-    }
-
-    const staleBefore = new Date(
-      Date.now() - PROCESSING_STALE_MS
-    );
-
-    const jobs = await SceneFinderJob.find({
-      $or: [
-        { status: "pending" },
-        {
-          status: "processing",
-          processingHeartbeatAt: { $lte: staleBefore },
-        },
-        {
-          status: "processing",
-          processingHeartbeatAt: null,
-          processingStartedAt: { $lte: staleBefore },
-        },
-        {
-          status: "processing",
-          processingHeartbeatAt: null,
-          processingStartedAt: null,
-        },
-      ],
-    })
-      .select("_id videoPath status")
-      .sort({ createdAt: 1 })
-      .limit(QUEUE_RECOVERY_BATCH_SIZE)
-      .lean();
-
-    let queuedCount = 0;
-
-    for (const job of jobs) {
-      const queued = await enqueueSceneFinderJob(
-        job._id.toString(),
-        job.videoPath || null
-      );
-
-      if (queued) queuedCount += 1;
-    }
-
-    if (queuedCount) {
-      console.log(
-        "Recovered " + queuedCount + " Scene Finder job(s) into Redis."
-      );
-    }
-
-    return;
   }
 
   const staleBefore = new Date(
@@ -364,7 +346,7 @@ const recoverSceneFinderJobs = async () => {
   let queuedCount = 0;
 
   for (const job of jobs) {
-    const queued = enqueueLocal(
+    const queued = await enqueueSceneFinderJob(
       job._id.toString(),
       job.videoPath || null
     );
@@ -396,15 +378,31 @@ const startSceneFinderQueueRecovery = () => {
   recoveryTimer.unref?.();
 };
 
+const closeSceneFinderQueue = async () => {
+  if (recoveryTimer) {
+    clearInterval(recoveryTimer);
+    recoveryTimer = null;
+  }
+
+  if (distributedWorker) {
+    await distributedWorker.close();
+    distributedWorker = null;
+  }
+
+  if (distributedQueue) {
+    await distributedQueue.close();
+    distributedQueue = null;
+  }
+
+  distributedQueueReady = false;
+};
+
 const getSceneFinderQueueStatus = () => ({
   mode: USE_DISTRIBUTED_QUEUE ? "redis" : "local",
-  queued: USE_DISTRIBUTED_QUEUE
-    ? null
-    : localQueue.length,
-  active: USE_DISTRIBUTED_QUEUE
-    ? null
-    : activeJobs.size,
+  queued: USE_DISTRIBUTED_QUEUE ? null : localQueue.length,
+  active: USE_DISTRIBUTED_QUEUE ? null : activeJobs.size,
   concurrency: MAX_CONCURRENT_JOBS,
+  retries: MAX_QUEUE_RETRIES,
 });
 
 module.exports = {
@@ -413,4 +411,5 @@ module.exports = {
   getSceneFinderQueueStatus,
   startSceneFinderQueueRecovery,
   initializeDistributedQueue,
+  closeSceneFinderQueue,
 };

@@ -67,6 +67,7 @@ const temporalConsistency = (scores, threshold = 0.72) => {
 };
 
 const remoteImageCache = new Map();
+const REMOTE_IMAGE_CACHE_MAX = Math.max(16, Number(process.env.SCENE_FINDER_IMAGE_CACHE_MAX || 96));
 
 const fetchRemoteImage = async (url) => {
   if (!url) return null;
@@ -108,6 +109,10 @@ const fetchRemoteImage = async (url) => {
   })();
 
   remoteImageCache.set(url, promise);
+  while (remoteImageCache.size > REMOTE_IMAGE_CACHE_MAX) {
+    const oldestKey = remoteImageCache.keys().next().value;
+    remoteImageCache.delete(oldestKey);
+  }
   return promise;
 };
 

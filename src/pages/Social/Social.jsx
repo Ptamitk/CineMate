@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 import { contentService } from "../../services/content/contentService";
+import { apiFetch } from "../../services/api";
 
 import {
   isPostSaved,
@@ -28,7 +29,16 @@ import { sharePost } from "../../utils/postShares";
 
 import { updatePost } from "../../utils/posts";
 
-const API_BASE_URL = "http://localhost:5000";
+
+
+const apiRequest = async (endpoint, options = {}) => {
+  try {
+    const data = await apiFetch(endpoint, options);
+    return { ok: true, status: 200, json: async () => data };
+  } catch (error) {
+    return { ok: false, status: error?.status || 500, json: async () => ({ message: error?.message || "Request failed." }) };
+  }
+};
 
 const getAuthToken = () => {
   try {
@@ -80,6 +90,15 @@ const Social = () => {
 
   const [loading, setLoading] =
     useState(true);
+
+  const [feedPage, setFeedPage] =
+    useState(1);
+
+  const [feedHasMore, setFeedHasMore] =
+    useState(false);
+
+  const [loadingMorePosts, setLoadingMorePosts] =
+    useState(false);
 
   const [postText, setPostText] =
     useState("");
@@ -201,9 +220,13 @@ const Social = () => {
      FETCH FEED
   ========================= */
 
-  const fetchPosts = async () => {
+  const fetchPosts = async (page = 1, append = false) => {
     try {
-      setLoading(true);
+      if (append) {
+        setLoadingMorePosts(true);
+      } else {
+        setLoading(true);
+      }
 
       const token =
         getAuthToken();
@@ -214,8 +237,8 @@ const Social = () => {
       }
 
       const response =
-        await fetch(
-          `${API_BASE_URL}/api/posts`,
+        await apiRequest(
+          `/posts?page=${page}&limit=20`,
           {
             method: "GET",
             headers: {
@@ -235,9 +258,13 @@ const Social = () => {
         );
       }
 
-      setPosts(
-        data.posts || []
+      setPosts((currentPosts) =>
+        append
+          ? [...currentPosts, ...(data.posts || [])]
+          : data.posts || []
       );
+      setFeedPage(data.page || page);
+      setFeedHasMore(Boolean(data.hasMore));
     } catch (error) {
       console.error(
         "Social Feed Error:",
@@ -247,6 +274,7 @@ const Social = () => {
       setPosts([]);
     } finally {
       setLoading(false);
+      setLoadingMorePosts(false);
     }
   };
 
@@ -266,8 +294,8 @@ const Social = () => {
       }
 
       const response =
-        await fetch(
-          `${API_BASE_URL}/api/posts/${postId}`,
+        await apiRequest(
+          `/posts/${postId}`,
           {
             method: "GET",
             headers: {
@@ -342,8 +370,8 @@ const Social = () => {
       }
 
       const response =
-        await fetch(
-          `${API_BASE_URL}/api/follows/${userId}`,
+        await apiRequest(
+          `/follows/${userId}`,
           {
             method: "GET",
             headers: {
@@ -400,8 +428,8 @@ const Social = () => {
       );
 
       const response =
-        await fetch(
-          `${API_BASE_URL}/api/follows/${userId}`,
+        await apiRequest(
+          `/follows/${userId}`,
           {
             method: "POST",
             headers: {
@@ -949,8 +977,8 @@ const Social = () => {
         }
 
         const response =
-          await fetch(
-            `${API_BASE_URL}/api/posts`,
+          await apiRequest(
+            `/posts`,
             {
               method: "POST",
               headers: {
@@ -1014,8 +1042,8 @@ const Social = () => {
       }
 
       const response =
-        await fetch(
-          `${API_BASE_URL}/api/posts/${postId}`,
+        await apiRequest(
+          `/posts/${postId}`,
           {
             method: "POST",
             headers: {
@@ -1086,8 +1114,8 @@ const Social = () => {
         );
 
         const response =
-          await fetch(
-            `${API_BASE_URL}/api/comments/post/${postId}`,
+          await apiRequest(
+            `/comments/post/${postId}`,
             {
               method: "GET",
               headers: {
@@ -1181,8 +1209,8 @@ const Social = () => {
         }
 
         const response =
-          await fetch(
-            `${API_BASE_URL}/api/comments/post/${postId}`,
+          await apiRequest(
+            `/comments/post/${postId}`,
             {
               method: "POST",
               headers: {
@@ -1305,8 +1333,8 @@ const Social = () => {
         );
 
         const response =
-          await fetch(
-            `${API_BASE_URL}/api/comments/${commentId}`,
+          await apiRequest(
+            `/comments/${commentId}`,
             {
               method: "PUT",
               headers: {
@@ -1394,8 +1422,8 @@ const Social = () => {
         );
 
         const response =
-          await fetch(
-            `${API_BASE_URL}/api/posts/${postId}`,
+          await apiRequest(
+            `/posts/${postId}`,
             {
               method: "DELETE",
               headers: {
@@ -1485,8 +1513,8 @@ const Social = () => {
       }
 
       const response =
-        await fetch(
-          `${API_BASE_URL}/api/comments/${commentId}`,
+        await apiRequest(
+          `/comments/${commentId}`,
           {
             method: "DELETE",
             headers: {
@@ -2700,6 +2728,19 @@ const Social = () => {
                 }
               )
             )}
+
+          {feedHasMore && (
+            <div className="flex justify-center border-t border-white/10 px-5 py-6 sm:px-6">
+              <button
+                type="button"
+                onClick={() => fetchPosts(feedPage + 1, true)}
+                disabled={loadingMorePosts}
+                className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-2.5 text-sm font-medium text-white/70 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {loadingMorePosts ? "Loading..." : "Load more posts"}
+              </button>
+            </div>
+          )}
 
           </section>
 

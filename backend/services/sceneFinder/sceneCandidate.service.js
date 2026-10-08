@@ -210,10 +210,6 @@ const isUsefulSignal = (value = "") => {
     return false;
   }
 
-  const uniqueWords = new Set(
-    words.map((word) => word.toLowerCase())
-  );
-
   if (
     words.length === 1 &&
     (

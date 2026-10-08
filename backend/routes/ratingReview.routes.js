@@ -1,0 +1,13 @@
+const express=require("express");
+const auth=require("../middleware/auth.middleware");
+const c=require("../controllers/ratingReview.controller");
+const { cacheResponse } = require("../middleware/redisCache.middleware");
+const router=express.Router();
+router.get("/:contentType/:contentId/ratings",c.getRatingSummary);
+router.put("/:contentType/:contentId/ratings",auth,c.upsertRating);
+router.delete("/:contentType/:contentId/ratings",auth,c.deleteRating);
+router.get("/:contentType/:contentId/reviews",cacheResponse(30),c.listReviews);
+router.post("/:contentType/:contentId/reviews",auth,c.createReview);
+router.put("/:contentType/:contentId/reviews/:reviewId",auth,c.updateReview);
+router.delete("/:contentType/:contentId/reviews/:reviewId",auth,c.deleteReview);
+module.exports=router;

@@ -58,10 +58,48 @@ return data;
 };
 
 const getTelegramBotInfo = async () => {
-return telegramRequest("getMe");
+  return telegramRequest("getMe");
+};
+
+const configureTelegramWebhook = async () => {
+  const webhookUrl =
+    process.env.TELEGRAM_WEBHOOK_URL?.trim();
+
+  if (!webhookUrl) {
+    console.warn(
+      "Telegram webhook not configured: TELEGRAM_WEBHOOK_URL is missing."
+    );
+    return null;
+  }
+
+  const secret =
+    process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
+
+  const body = {
+    url: webhookUrl,
+    allowed_updates: ["message"],
+  };
+
+  if (secret) {
+    body.secret_token = secret;
+  }
+
+  const result =
+    await telegramRequest(
+      "setWebhook",
+      body
+    );
+
+  console.log(
+    "Telegram Webhook Configured:",
+    webhookUrl
+  );
+
+  return result;
 };
 
 module.exports = {
-telegramRequest,
-getTelegramBotInfo,
+  telegramRequest,
+  getTelegramBotInfo,
+  configureTelegramWebhook,
 };

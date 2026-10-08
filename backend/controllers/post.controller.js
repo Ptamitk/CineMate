@@ -98,32 +98,18 @@ const createPost = async (req, res) => {
 
 const getFeed = async (req, res) => {
   try {
-    const posts =
-      await Post.find()
-        .populate(
-          "user",
-          "name profilePicture"
-        )
-        .sort({
-          createdAt: -1,
-        });
-
-    return res.status(200).json({
-      posts,
-    });
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+    const [posts, total] = await Promise.all([
+      Post.find().populate("user", "name profilePicture").sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      Post.countDocuments(),
+    ]);
+    return res.status(200).json({ posts, page, limit, hasMore: page * limit < total, total });
   } catch (error) {
-    console.error(
-      "Get Feed Error:",
-      error
-    );
-
-    return res.status(500).json({
-      message:
-        "Something went wrong while fetching the feed.",
-    });
+    console.error("Get Feed Error:", error);
+    return res.status(500).json({ message: "Something went wrong while fetching the feed." });
   }
 };
-
 /* =========================
    UPDATE POST
 ========================= */

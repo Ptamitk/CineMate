@@ -50,6 +50,12 @@ const sharePost = async (
         post.sharesCount,
     });
   } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({
+        message: "Post already shared.",
+      });
+    }
+
     console.error(
       "Share Post Error:",
       error

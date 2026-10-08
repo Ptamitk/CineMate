@@ -6,6 +6,31 @@ const { analyzeArtworkSimilarity, analyzeCandidateVisualLabels } = require("./vi
 const { selectUsefulFrames } = require("./frameSelection.service");
 const { overlapScore, exactTitle, extractTextEvidence } = require("./evidenceCleanup.service");
 
+const aiStageQueue = [];
+let aiStageRunning = false;
+
+const runAiStageExclusive = async (task) => {
+  await new Promise((resolve, reject) => {
+    aiStageQueue.push({ resolve, reject });
+    const drain = () => {
+      if (aiStageRunning || !aiStageQueue.length) return;
+      aiStageRunning = true;
+      const waiter = aiStageQueue.shift();
+      waiter.resolve();
+    };
+    drain();
+  });
+
+  try {
+    return await task();
+  } finally {
+    aiStageRunning = false;
+    if (aiStageQueue.length) {
+      aiStageQueue[0].resolve();
+    }
+  }
+};
+
 const aggregate = (matches, candidate) => {
   const rows = (matches || []).filter(item =>
     Number(item.contentId) === Number(candidate.contentId) &&
@@ -65,7 +90,7 @@ const textEvidence = (candidate, text) => {
   return { captionScore, ocrScore, stableOcrScore, speechScore, captionExact, speechExact, stableOcrExact, exact, independent };
 };
 
-const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audioPath = null, caption = "", frameTimestamps = {} }) => {
+const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audioPath = null, caption = "", frameTimestamps = {} }) => runAiStageExclusive(async () => {
   const signals = await analyzeSceneSignals({
     frameFiles: ocrFrameFiles.length ? ocrFrameFiles : frameFiles,
     audioPath
@@ -77,9 +102,17 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     speech: signals.speech.text || ""
   });
 
+  const fallbackEnabled = String(process.env.SCENE_FINDER_FALLBACK_ENABLED || "true").toLowerCase() === "true";
+  const visualFrameLimit = Math.max(
+    10,
+    Math.min(
+      fallbackEnabled ? 20 : 16,
+      Number(process.env.SCENE_FINDER_VISUAL_FRAMES || (fallbackEnabled ? 20 : 14))
+    )
+  );
   const visualFrames = selectUsefulFrames({
     frameFiles,
-    maxFrames: Math.max(10, Math.min(16, Number(process.env.SCENE_FINDER_VISUAL_FRAMES || 12)))
+    maxFrames: visualFrameLimit
   });
 
   // Fast-path: when the evidence already contains an exact, strong title,
@@ -151,15 +184,27 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     };
   }
 
-  const artworkCandidates = await getCandidateArtwork(
-    candidates,
-    Math.min(candidates.length, Math.max(20, Number(process.env.SCENE_FINDER_ARTWORK_CANDIDATES || 64)))
+  const artworkCandidateLimit = Math.min(
+    candidates.length,
+    Math.max(
+      20,
+      Number(
+        process.env.SCENE_FINDER_ARTWORK_CANDIDATES ||
+        (fallbackEnabled ? 96 : 80)
+      )
+    )
   );
+  const episodeCandidateLimit = Number(
+    process.env.SCENE_FINDER_EPISODE_CANDIDATES ||
+    (fallbackEnabled ? 24 : 16)
+  );
+
+  const artworkCandidates = await getCandidateArtwork(candidates, artworkCandidateLimit);
 
   const tvCandidates = candidates.filter(x => x.contentType === "tv");
   const episodeArtwork = await getCandidateEpisodeArtwork(
     tvCandidates,
-    Math.min(tvCandidates.length, Number(process.env.SCENE_FINDER_EPISODE_CANDIDATES || 8))
+    Math.min(tvCandidates.length, episodeCandidateLimit)
   );
 
   const artworkFrames = selectUsefulFrames({
@@ -171,6 +216,51 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     analyzeArtworkSimilarity({ frameFiles: artworkFrames, candidateArtwork: artworkCandidates, frameTimestamps }),
     analyzeArtworkSimilarity({ frameFiles: artworkFrames, candidateArtwork: episodeArtwork, frameTimestamps })
   ]);
+
+  // The first pass already uses the expanded production limits above. Keep
+  // one lightweight recovery pass available for difficult scenes: it reuses
+  // OCR/Whisper/candidate discovery results and only expands visual retrieval.
+  const runVisualRecoveryPass = async () => {
+    if (!fallbackEnabled) return null;
+
+    const recoveryFrameCount = Math.max(
+      visualFrameLimit,
+      Math.min(24, Number(process.env.SCENE_FINDER_FALLBACK_VISUAL_FRAMES || 24))
+    );
+    const recoveryArtworkLimit = Math.min(
+      candidates.length,
+      Math.max(artworkCandidateLimit, Number(process.env.SCENE_FINDER_FALLBACK_ARTWORK_CANDIDATES || 120))
+    );
+    const recoveryEpisodeLimit = Math.min(
+      tvCandidates.length,
+      Math.max(episodeCandidateLimit, Number(process.env.SCENE_FINDER_FALLBACK_EPISODE_CANDIDATES || 32))
+    );
+
+    const recoveryFrames = selectUsefulFrames({ frameFiles, maxFrames: recoveryFrameCount });
+    if (!recoveryFrames.length) return null;
+
+    const recoveryArtwork = recoveryArtworkLimit > artworkCandidateLimit
+      ? await getCandidateArtwork(candidates, recoveryArtworkLimit)
+      : artworkCandidates;
+    const recoveryEpisodes = recoveryEpisodeLimit > episodeCandidateLimit
+      ? await getCandidateEpisodeArtwork(tvCandidates, recoveryEpisodeLimit)
+      : episodeArtwork;
+    const recoveryArtworkFrames = selectUsefulFrames({
+      frameFiles: recoveryFrames,
+      maxFrames: Math.min(18, recoveryFrameCount)
+    });
+
+    const [recoveryArtworkMatches, recoveryEpisodeMatches] = await Promise.all([
+      analyzeArtworkSimilarity({ frameFiles: recoveryArtworkFrames, candidateArtwork: recoveryArtwork, frameTimestamps }),
+      analyzeArtworkSimilarity({ frameFiles: recoveryArtworkFrames, candidateArtwork: recoveryEpisodes, frameTimestamps })
+    ]);
+
+    return {
+      recoveryFrames,
+      recoveryArtworkMatches,
+      recoveryEpisodeMatches
+    };
+  };
 
   const artworkRankedIds = [...artworkSimilarityMatches]
     .sort((a, b) => Number(b.imageSimilarity || 0) - Number(a.imageSimilarity || 0))
@@ -355,7 +445,52 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     best.sceneScore >= 0.92 &&
     margin >= 0.035;
 
-  const accepted = visualAccepted || corroboratedTextAccepted || exactTextAccepted;
+  const primaryAccepted =
+    visualAccepted ||
+    corroboratedTextAccepted ||
+    exactTextAccepted;
+
+  let finalBest = primaryAccepted ? best : null;
+  let finalMargin = margin;
+  let recoveryUsed = false;
+
+  if (!finalBest) {
+    const recovery = await runVisualRecoveryPass();
+    if (recovery) {
+      const mergedArtwork = [...artworkSimilarityMatches, ...recovery.recoveryArtworkMatches];
+      const mergedEpisodes = [...episodeSimilarityMatches, ...recovery.recoveryEpisodeMatches];
+
+      const merged = candidates.map(candidate => {
+        const t = textEvidence(candidate, text);
+        const art = aggregate(mergedArtwork, candidate);
+        const ep = aggregate(mergedEpisodes, candidate);
+        const label = aggregateLabel(visualLabelMatches, candidate);
+        const artworkScore = Math.max(
+          art.average * 0.58 + art.max * 0.17 + art.temporalConsistency * 0.25,
+          ep.average * 0.62 + ep.max * 0.18 + ep.temporalConsistency * 0.20
+        );
+        const labelScore = label.visualLabelScore * 0.58 + label.visualLabelMax * 0.17 + label.visualLabelTemporalConsistency * 0.25;
+        const score = Math.min(0.98, Math.max(
+          t.exact ? 0.97 : Math.max(t.stableOcrScore * 0.52, t.speechScore * 0.40, t.captionScore * 0.28) * 0.25 +
+            Math.max(artworkScore * 0.42 + labelScore * 0.58, labelScore) * 0.75,
+          artworkScore * 0.95
+        ));
+        return { ...scored.find(x => x.contentId === candidate.contentId && x.contentType === candidate.contentType), sceneScore: Number(score.toFixed(4)), confidence: Math.round(score * 100) };
+      }).sort((a,b) => b.sceneScore-a.sceneScore);
+
+      const recoveryBest = merged[0] || null;
+      const recoverySecond = merged[1] || null;
+      const recoveryMargin = recoveryBest && recoverySecond ? recoveryBest.sceneScore - recoverySecond.sceneScore : 0;
+      if (recoveryBest && recoveryMargin >= 0.07 && recoveryBest.sceneScore >= 0.66 &&
+          (recoveryBest.evidenceType === "visual" || recoveryBest.evidenceType === "episode-visual")) {
+        finalBest = recoveryBest;
+        finalMargin = recoveryMargin;
+        recoveryUsed = true;
+      }
+    }
+  }
+
+  const accepted = Boolean(finalBest);
 
   const rejectionReason = !best
     ? "no-candidates"
@@ -375,9 +510,10 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
 
   console.log("Scene Finder production decision:", {
     accepted,
-    bestTitle: best?.title || "",
-    bestScore: best?.sceneScore || 0,
-    margin: Number(margin.toFixed(4)),
+    bestTitle: finalBest?.title || "",
+    bestScore: finalBest?.sceneScore || 0,
+    margin: Number(finalMargin.toFixed(4)),
+    recoveryUsed,
     reason: rejectionReason,
     artworkMatches: artworkSimilarityMatches.length,
     episodeArtworkMatches: episodeSimilarityMatches.length,
@@ -393,11 +529,11 @@ const analyzeSceneEvidence = async ({ frameFiles = [], ocrFrameFiles = [], audio
     caption,
     queries: candidateResult?.queries || [],
     candidates: scored,
-    bestMatch: accepted ? best : null,
+    bestMatch: finalBest,
     artworkSimilarityMatches,
     episodeSimilarityMatches,
     visualLabelMatches
   };
-};
+});
 
 module.exports = { analyzeSceneEvidence };

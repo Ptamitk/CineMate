@@ -17,6 +17,8 @@ import CastCrew from "../../components/content/CastCrew";
 import VideoSection from "../../components/content/VideoSection";
 import WatchProviders from "../../components/content/WatchProviders";
 import RecommendationSection from "../../components/content/RecommendationSection";
+import ContentActions from "../../components/content/ContentActions";
+import ReviewsSection from "../../components/content/ReviewsSection";
 
 const TVDetails = () => {
   const { id } = useParams();
@@ -479,7 +481,9 @@ const TVDetails = () => {
 
       </section>
 
-      {/* =========================
+      <ContentActions content={{ id: show.id, type: "tv", title: show.name, image: show.poster_path ? `https://image.tmdb.org/t/p/w780${show.poster_path}` : "", year: show.first_air_date ? show.first_air_date.slice(0,4) : "", rating: typeof show.vote_average === "number" ? show.vote_average.toFixed(1) : "" }} />
+
+            {/* =========================
           BASIC INFO
       ========================= */}
 
@@ -791,6 +795,8 @@ const TVDetails = () => {
         <WatchProviders
           providers={watchProviders}
         />
+
+        <ReviewsSection type="tv" id={show.id} />
 
         {/* =========================
             SIMILAR TV SHOWS

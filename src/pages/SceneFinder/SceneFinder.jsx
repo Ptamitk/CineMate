@@ -1,3 +1,4 @@
+import { apiFetch } from "../../services/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -15,8 +16,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+
 
 const stages = [
   { icon: Camera, title: "Scanning", text: "Sampling useful frames from your clip." },
@@ -88,6 +88,11 @@ const SceneFinder = () => {
   // Each analysis gets a unique run token. This prevents an older in-flight
   // poll response from overwriting the result of a newer analysis.
   const analysisRunRef = useRef(0);
+  const analysisStartedAtRef = useRef(0);
+  const MAX_ANALYSIS_WAIT_MS = Math.max(
+    60 * 1000,
+    Number(import.meta.env.VITE_SCENE_FINDER_MAX_WAIT_MS || 15 * 60 * 1000)
+  );
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -112,21 +117,26 @@ const SceneFinder = () => {
   const pollStatus = useCallback(async (id, token, runToken) => {
     if (runToken !== analysisRunRef.current) return;
 
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/scene-finder/status/${id}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const data = await response.json();
+    if (
+      analysisStartedAtRef.current &&
+      Date.now() - analysisStartedAtRef.current > MAX_ANALYSIS_WAIT_MS
+    ) {
+      stopPolling();
+      setSearching(false);
+      setJobId(null);
+      setError("Scene analysis is taking too long. Please try the clip again later.");
+      return;
+    }
 
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          stopPolling();
-          setSearching(false);
-          setError("Your session has expired. Please login again.");
-          return;
+    try {
+      let data;
+      try {
+        data = await apiFetch(`/scene-finder/status/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      } catch (error) {
+        if (error?.status === 401 || error?.status === 403) {
+          stopPolling(); setSearching(false); setJobId(null); setError("Your session has expired. Please login again."); return;
         }
-        throw new Error(data.message || "Unable to read Scene Finder status.");
+        throw error;
       }
 
       // Ignore responses from an older job/run even if that request was
@@ -138,8 +148,7 @@ const SceneFinder = () => {
 
       if (job.status === "completed") {
         stopPolling();
-        localStorage.removeItem("cinemate_scene_finder_job");
-        setSearching(false);
+          setSearching(false);
         setJobId(null);
 
         const normalized = normalizeResult(job.result);
@@ -169,9 +178,27 @@ const SceneFinder = () => {
       // Never let an older request change the state of the current analysis.
       if (runToken !== analysisRunRef.current) return;
       console.error("Scene Finder polling error:", e);
+
+      // Invalid/missing jobs are terminal states for this polling run.
+      // Do not keep hammering the API with a stale job id.
+      if (e?.status === 400 || e?.status === 404) {
+        stopPolling();
+        setSearching(false);
+        setJobId(null);
+        localStorage.removeItem("cinemate_scene_finder_job");
+        setError(
+          e.status === 404
+            ? "This Scene Finder job no longer exists. Please analyze the clip again."
+            : e.message || "Invalid Scene Finder job."
+        );
+        return;
+      }
+
+      // Keep retrying transient network/server errors until the normal
+      // analysis timeout is reached.
       setSearching(true);
     }
-  }, [stopPolling]);
+  }, [stopPolling, MAX_ANALYSIS_WAIT_MS]);
 
   const startPolling = useCallback((id, token, runToken = analysisRunRef.current) => {
     stopPolling();
@@ -184,20 +211,6 @@ const SceneFinder = () => {
 
     pollRef.current = setTimeout(tick, 0);
   }, [pollStatus, stopPolling]);
-
-  useEffect(() => {
-    const storedJob = localStorage.getItem("cinemate_scene_finder_job");
-    const token = getAuthToken();
-
-    if (storedJob && token) {
-      const runToken = ++analysisRunRef.current;
-      setJobId(storedJob);
-      setSearching(true);
-      startPolling(storedJob, token, runToken);
-    }
-
-    return () => stopPolling();
-  }, [startPolling, stopPolling]);
 
   const selectVideo = (file) => {
     if (!file) return;
@@ -238,6 +251,7 @@ const SceneFinder = () => {
     stopPolling();
     setSearching(true);
     setStep(0);
+    analysisStartedAtRef.current = Date.now();
     setResult(null);
     setError("");
 
@@ -246,27 +260,23 @@ const SceneFinder = () => {
       if (cleanUrl) body.append("reelUrl", cleanUrl);
       if (video) body.append("video", video);
 
-      const response = await fetch(
-        `${API_BASE_URL}/api/scene-finder/analyze`,
-        {
+      const data = await apiFetch("/scene-finder/analyze", {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
           body,
         }
       );
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || "Failed to start analysis.");
-
       const id = data.job?.id;
       if (!id) throw new Error("Scene analysis job ID was not returned.");
 
       setJobId(id);
-      localStorage.setItem("cinemate_scene_finder_job", id);
       startPolling(id, token, runToken);
     } catch (e) {
       stopPolling();
       setSearching(false);
+      setJobId(null);
+      localStorage.removeItem("cinemate_scene_finder_job");
       setError(e.message || "Something went wrong while analyzing the scene.");
     }
   };

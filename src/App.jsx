@@ -26,13 +26,17 @@ import Search from "./pages/Search/Search";
 
 import Profile from "./pages/Profile/Profile";
 import Social from "./pages/Social/Social";
-import Chat from "./pages/Chat/Chat";
 
 import Login from "./pages/Login/Login";
 import Signup from "./pages/Signup/Signup";
 import VerifyEmail from "./pages/VerifyEmail/VerifyEmail";
+import ForgotPassword from "./pages/ForgotPassword/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword/ResetPassword";
+import GoogleCallback from "./pages/GoogleCallback/GoogleCallback";
 
 import Watchlist from "./pages/Watchlist/Watchlist";
+import Watched from "./pages/Watched/Watched";
+import Favorites from "./pages/Favorites/Favorites";
 import SavedPosts from "./pages/SavedPosts/SavedPosts";
 import Notifications from "./pages/Notifications/Notifications";
 import SceneFinder from "./pages/SceneFinder/SceneFinder";
@@ -165,6 +169,21 @@ function AppContent() {
           element={<VerifyEmail />}
         />
 
+        <Route
+          path="/forgot-password"
+          element={<ForgotPassword />}
+        />
+
+        <Route
+          path="/reset-password"
+          element={<ResetPassword />}
+        />
+
+        <Route
+          path="/oauth-callback"
+          element={<GoogleCallback />}
+        />
+
         <Route element={<ProtectedRoute />}>
           <Route
             path="/profile"
@@ -176,15 +195,9 @@ function AppContent() {
             element={<Social />}
           />
 
-          <Route
-            path="/chat"
-            element={<Chat />}
-          />
-
-          <Route
-            path="/watchlist"
-            element={<Watchlist />}
-          />
+          <Route path="/watchlist" element={<Watchlist />} />
+          <Route path="/watched" element={<Watched />} />
+          <Route path="/favorites" element={<Favorites />} />
         </Route>
 
         <Route

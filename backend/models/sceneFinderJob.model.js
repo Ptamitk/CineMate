@@ -36,6 +36,8 @@ const sceneFinderJobSchema = new mongoose.Schema(
         "processing",
         "completed",
         "failed",
+        "cancelled",
+        "expired",
       ],
       default: "pending",
       index: true,
