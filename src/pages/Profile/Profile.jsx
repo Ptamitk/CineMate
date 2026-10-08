@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+
 
 
 import {
@@ -23,6 +23,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { getWatchlist } from "../../utils/watchlist";
 import { getLibrary } from "../../services/content/userContentService";
+import { apiFetch } from "../../services/api";
 
 const Profile = () => {
   const { user, token, updateUser } = useAuth();
@@ -83,28 +84,14 @@ const Profile = () => {
     };
     if (token) fetchLibraryCounts();
     return () => { active = false; };
-  }, [token]);
+  }, [token, fetchTelegramStatus]);
 
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const response = await fetch(
-          API_BASE_URL + "/users/me",
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
+        const data = await apiFetch("/users/me", { headers: { Authorization: `Bearer ${token}` } });
 
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.message ||
-              "Failed to fetch profile."
-          );
-        }
+        
 
         setProfile(data.user);
         updateUser(data.user);
@@ -127,22 +114,9 @@ const Profile = () => {
     const requestId = ++telegramStatusRequestRef.current;
 
     try {
-      const response = await fetch(
-        API_BASE_URL + "/telegram-account/status",
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const data = await apiFetch("/telegram-account/status", { headers: { Authorization: `Bearer ${token}` } });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.message || "Failed to fetch Telegram status."
-        );
-      }
+      
 
       // Ignore an older polling response that started before a disconnect.
       if (requestId !== telegramStatusRequestRef.current) return;
@@ -190,13 +164,7 @@ const Profile = () => {
         }
       );
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.message || "Failed to disconnect Telegram."
-        );
-      }
+      
 
       setTelegramConnected(false);
       setTelegramCode("");
@@ -315,14 +283,7 @@ const Profile = () => {
         }
       );
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.message ||
-            "Failed to update profile."
-        );
-      }
+      
 
       setProfile(data.user);
       updateUser(data.user);
@@ -364,14 +325,7 @@ const Profile = () => {
           }
         );
 
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.message ||
-              "Failed to generate Telegram code."
-          );
-        }
+        
 
         setTelegramCode(data.code);
         setTelegramSuccess(
