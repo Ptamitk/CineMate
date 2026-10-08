@@ -84,7 +84,7 @@ const Profile = () => {
     };
     if (token) fetchLibraryCounts();
     return () => { active = false; };
-  }, [token, fetchTelegramStatus]);
+  }, [token]);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -154,19 +154,9 @@ const Profile = () => {
       setTelegramError("");
       setTelegramSuccess("");
 
-      const response = await fetch(
-        API_BASE_URL + "/telegram-account/disconnect",
-        {
-          method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      await apiFetch("/telegram-account/disconnect", { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
 
-      
-
-      setTelegramConnected(false);
+setTelegramConnected(false);
       setTelegramCode("");
       setTelegramSuccess("Telegram disconnected successfully.");
     } catch (error) {
@@ -272,20 +262,9 @@ const Profile = () => {
         );
       }
 
-      const response = await fetch(
-        API_BASE_URL + "/users/me",
-        {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
-        }
-      );
+      const data = await apiFetch("/users/me", { method: "PUT", headers: { Authorization: `Bearer ${token}` }, body: formData });
 
-      
-
-      setProfile(data.user);
+setProfile(data.user);
       updateUser(data.user);
 
       setIsEditing(false);
@@ -315,19 +294,9 @@ const Profile = () => {
         setTelegramSuccess("");
         setTelegramCode("");
 
-        const response = await fetch(
-          API_BASE_URL + "/telegram-account/generate-code",
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
+        const data = await apiFetch("/telegram-account/generate-code", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
 
-        
-
-        setTelegramCode(data.code);
+setTelegramCode(data.code);
         setTelegramSuccess(
           "Pairing code generated. Send it to the CineMate Telegram bot to connect."
         );
