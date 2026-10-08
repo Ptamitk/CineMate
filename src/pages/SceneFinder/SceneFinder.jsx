@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+import { apiFetch } from "../../services/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -129,26 +129,14 @@ const SceneFinder = () => {
     }
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/scene-finder/status/${id}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const data = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          stopPolling();
-          setSearching(false);
-          setJobId(null);
-            setError("Your session has expired. Please login again.");
-          return;
+      let data;
+      try {
+        data = await apiFetch(`/scene-finder/status/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      } catch (error) {
+        if (error?.status === 401 || error?.status === 403) {
+          stopPolling(); setSearching(false); setJobId(null); setError("Your session has expired. Please login again."); return;
         }
-
-        const statusError = new Error(
-          data.message || "Unable to read Scene Finder status."
-        );
-        statusError.status = response.status;
-        throw statusError;
+        throw error;
       }
 
       // Ignore responses from an older job/run even if that request was
@@ -210,7 +198,7 @@ const SceneFinder = () => {
       // analysis timeout is reached.
       setSearching(true);
     }
-  }, [stopPolling]);
+  }, [stopPolling, MAX_ANALYSIS_WAIT_MS]);
 
   const startPolling = useCallback((id, token, runToken = analysisRunRef.current) => {
     stopPolling();
@@ -272,17 +260,12 @@ const SceneFinder = () => {
       if (cleanUrl) body.append("reelUrl", cleanUrl);
       if (video) body.append("video", video);
 
-      const response = await fetch(
-        `${API_BASE_URL}/scene-finder/analyze`,
-        {
+      const data = await apiFetch("/scene-finder/analyze", {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
           body,
         }
       );
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || "Failed to start analysis.");
 
       const id = data.job?.id;
       if (!id) throw new Error("Scene analysis job ID was not returned.");
