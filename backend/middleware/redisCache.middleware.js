@@ -47,7 +47,7 @@ const invalidateCache = async (pattern) => {
   if (!redisClient) return;
   try {
     const keys = await redisClient.keys("cinemate:cache:" + pattern);
-    if (keys.length) await redisClient.del(keys);
+    if (keys.length) await redisClient.del(...keys);
   } catch (error) {
     console.error("Redis cache invalidation:", error.message);
   }
