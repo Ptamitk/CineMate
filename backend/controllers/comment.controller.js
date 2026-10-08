@@ -96,20 +96,26 @@ const getComments = async (
       });
     }
 
-    const comments =
-      await Comment.find({
-        post: postId,
-      })
-        .populate(
-          "user",
-          "name profilePicture"
-        )
-        .sort({
-          createdAt: 1,
-        });
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+    const filter = { post: postId };
+
+    const [comments, total] = await Promise.all([
+      Comment.find(filter)
+        .populate("user", "name profilePicture")
+        .sort({ createdAt: 1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      Comment.countDocuments(filter),
+    ]);
 
     return res.status(200).json({
       comments,
+      page,
+      limit,
+      hasMore: page * limit < total,
+      total,
     });
   } catch (error) {
     console.error(
