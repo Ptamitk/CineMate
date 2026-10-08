@@ -1,4 +1,4 @@
-import { apiFetch, API_BASE_URL } from "../api";
+import { apiFetch } from "../api";
 const token=()=>{try{return JSON.parse(localStorage.getItem("cinemate_auth")||"{}")?.token||null;}catch{return null;}};
 const request=async(path,options={})=>{const t=token();if(!t)throw new Error("Please log in to use your library.");return apiFetch(path,{...options,headers:{Authorization:"Bearer "+t,...(options.headers||{})}});};
 const itemBody=c=>JSON.stringify({contentId:c.id,contentType:c.type,title:c.title,image:c.image||"",year:c.year||"",rating:c.rating||""});
