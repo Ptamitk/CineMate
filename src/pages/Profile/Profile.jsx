@@ -143,6 +143,9 @@ const Profile = () => {
     }, 3000);
 
     return () => clearInterval(interval);
+  // fetchTelegramStatus is intentionally kept outside the effect; the polling interval
+  // uses the latest token while request-id guards prevent stale responses.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const handleDisconnectTelegram = async () => {
