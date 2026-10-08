@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { LoaderCircle } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import { apiFetch } from "../../services/api";
 
 const GoogleCallback = () => {
   const [searchParams] = useSearchParams();
@@ -18,22 +19,9 @@ const GoogleCallback = () => {
 
     const completeLogin = async () => {
       try {
-        const response = await fetch(
-          "http://localhost:5000/api/auth/me",
-          {
-            headers: {
-              Authorization: "Bearer " + token,
-            },
-          }
-        );
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.message || "Unable to complete Google sign-in."
-          );
-        }
+        const data = await apiFetch("/auth/me", {
+          headers: { Authorization: "Bearer " + token },
+        });
 
         login({
           ...data.user,
@@ -49,7 +37,7 @@ const GoogleCallback = () => {
     };
 
     completeLogin();
-  }, []);
+  }, [login, searchParams]);
 
   if (error) {
     return <Navigate to={"/login?google_error=" + encodeURIComponent(error)} replace />;
