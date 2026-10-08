@@ -46,7 +46,16 @@ const app = express();
 const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:5173").split(",").map((value) => value.trim()).filter(Boolean);
 app.use(cors({ origin: (origin, callback) => { if (!origin || allowedOrigins.includes(origin)) return callback(null, true); return callback(new Error("CORS origin denied.")); }, credentials: true }));
 app.disable("x-powered-by");
-app.use((req,res,next)=>{ res.setHeader("X-Content-Type-Options","nosniff"); res.setHeader("X-Frame-Options","DENY"); res.setHeader("Referrer-Policy","strict-origin-when-cross-origin"); next(); });
+app.use((req,res,next)=>{
+  res.setHeader("X-Content-Type-Options","nosniff");
+  res.setHeader("X-Frame-Options","DENY");
+  res.setHeader("Referrer-Policy","strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy","camera=(), microphone=(), geolocation=()");
+  if (process.env.NODE_ENV === "production") {
+    res.setHeader("Strict-Transport-Security","max-age=31536000; includeSubDomains");
+  }
+  next();
+});
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "1mb" }));
 app.use(metricsMiddleware);
 app.use(rateLimit);
@@ -100,6 +109,22 @@ app.use((error,req,res,next)=>{console.error("API Error:",error);if(res.headersS
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
+  const requiredProductionEnv = [
+    "MONGO_URI",
+    "JWT_SECRET",
+    "FRONTEND_URL",
+  ];
+
+  if (process.env.NODE_ENV === "production") {
+    const missing = requiredProductionEnv.filter((key) => !process.env[key]);
+    if (missing.length) {
+      throw new Error(`Missing required production environment variables: ${missing.join(", ")}`);
+    }
+    if (process.env.JWT_SECRET.length < 32) {
+      throw new Error("JWT_SECRET must be at least 32 characters in production.");
+    }
+  }
+
   await connectDB();
 
   await cleanupStaleSceneTempFiles();
