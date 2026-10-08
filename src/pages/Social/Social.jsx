@@ -1,4 +1,3 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
 import { useEffect, useRef, useState } from "react";
 
@@ -30,6 +29,15 @@ import { sharePost } from "../../utils/postShares";
 import { updatePost } from "../../utils/posts";
 
 
+
+const apiRequest = async (endpoint, options = {}) => {
+  try {
+    const data = await apiFetch(endpoint, options);
+    return { ok: true, status: 200, json: async () => data };
+  } catch (error) {
+    return { ok: false, status: error?.status || 500, json: async () => ({ message: error?.message || "Request failed." }) };
+  }
+};
 
 const getAuthToken = () => {
   try {
@@ -228,8 +236,8 @@ const Social = () => {
       }
 
       const response =
-        await fetch(
-          `${API_BASE_URL}/posts?page=${page}&limit=20`,
+        await apiRequest(
+          `/posts?page=${page}&limit=20`,
           {
             method: "GET",
             headers: {
@@ -285,8 +293,8 @@ const Social = () => {
       }
 
       const response =
-        await fetch(
-          `${API_BASE_URL}/posts/${postId}`,
+        await apiRequest(
+          `/posts/${postId}`,
           {
             method: "GET",
             headers: {
@@ -361,8 +369,8 @@ const Social = () => {
       }
 
       const response =
-        await fetch(
-          `${API_BASE_URL}/follows/${userId}`,
+        await apiRequest(
+          `/follows/${userId}`,
           {
             method: "GET",
             headers: {
@@ -419,8 +427,8 @@ const Social = () => {
       );
 
       const response =
-        await fetch(
-          `${API_BASE_URL}/follows/${userId}`,
+        await apiRequest(
+          `/follows/${userId}`,
           {
             method: "POST",
             headers: {
@@ -968,8 +976,8 @@ const Social = () => {
         }
 
         const response =
-          await fetch(
-            `${API_BASE_URL}/posts`,
+          await apiRequest(
+            `/posts`,
             {
               method: "POST",
               headers: {
@@ -1033,8 +1041,8 @@ const Social = () => {
       }
 
       const response =
-        await fetch(
-          `${API_BASE_URL}/posts/${postId}`,
+        await apiRequest(
+          `/posts/${postId}`,
           {
             method: "POST",
             headers: {
@@ -1105,8 +1113,8 @@ const Social = () => {
         );
 
         const response =
-          await fetch(
-            `${API_BASE_URL}/comments/post/${postId}`,
+          await apiRequest(
+            `/comments/post/${postId}`,
             {
               method: "GET",
               headers: {
@@ -1200,8 +1208,8 @@ const Social = () => {
         }
 
         const response =
-          await fetch(
-            `${API_BASE_URL}/comments/post/${postId}`,
+          await apiRequest(
+            `/comments/post/${postId}`,
             {
               method: "POST",
               headers: {
@@ -1324,8 +1332,8 @@ const Social = () => {
         );
 
         const response =
-          await fetch(
-            `${API_BASE_URL}/comments/${commentId}`,
+          await apiRequest(
+            `/comments/${commentId}`,
             {
               method: "PUT",
               headers: {
@@ -1413,8 +1421,8 @@ const Social = () => {
         );
 
         const response =
-          await fetch(
-            `${API_BASE_URL}/posts/${postId}`,
+          await apiRequest(
+            `/posts/${postId}`,
             {
               method: "DELETE",
               headers: {
@@ -1504,8 +1512,8 @@ const Social = () => {
       }
 
       const response =
-        await fetch(
-          `${API_BASE_URL}/comments/${commentId}`,
+        await apiRequest(
+          `/comments/${commentId}`,
           {
             method: "DELETE",
             headers: {
