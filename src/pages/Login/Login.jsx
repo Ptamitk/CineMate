@@ -15,6 +15,8 @@ import { motion } from "framer-motion";
 import { useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api").replace(/\/+$/, "");
+
 const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
 
@@ -43,7 +45,7 @@ const Login = () => {
       setLoading(true);
 
       const response = await fetch(
-        "http://localhost:5000/api/auth/login",
+        `${API_BASE_URL}/auth/login`,
         {
           method: "POST",
           headers: {
