@@ -11,6 +11,8 @@ import {
 import { motion } from "framer-motion";
 import { useState } from "react";
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api").replace(/\/+$/, "");
+
 const Signup = () => {
   const [showPassword, setShowPassword] =
     useState(false);
@@ -64,7 +66,7 @@ const Signup = () => {
       setLoading(true);
 
       const response = await fetch(
-        "http://localhost:5000/api/auth/signup",
+        `${API_BASE_URL}/auth/signup`,
         {
           method: "POST",
           headers: {
