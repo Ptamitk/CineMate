@@ -3,19 +3,26 @@ const nodemailer = require("nodemailer");
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
-
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_APP_PASSWORD,
   },
+  // Avoid leaving signup requests waiting indefinitely when SMTP is unavailable.
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 15000,
 });
 
 const sendVerificationEmail = async (
   email,
   verificationToken
 ) => {
+  const frontendUrl = (
+    process.env.FRONTEND_URL || "http://localhost:5173"
+  ).replace(/\\/+$/, "");
+
   const verificationUrl =
-    `http://localhost:5173/verify-email?token=${verificationToken}`;
+    `${frontendUrl}/verify-email?token=${verificationToken}`;
 
   await transporter.sendMail({
     from: `"CineMate" <${process.env.EMAIL_USER}>`,
