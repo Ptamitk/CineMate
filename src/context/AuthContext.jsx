@@ -10,9 +10,10 @@ const AuthContext = createContext(null);
 
 const AUTH_STORAGE_KEY = "cinemate_auth";
 
-const API_BASE_URL =
+const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL ||
-  "http://localhost:5000";
+  "http://localhost:5000/api"
+).replace(/\\/+$/, "").replace(/\\/api$/, "");
 
 export const AuthProvider = ({ children }) => {
 const [user, setUser] = useState(null);
