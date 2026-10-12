@@ -6,7 +6,6 @@ const transporter = nodemailer.createTransport({
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_APP_PASSWORD,
   },
-  // Keep local SMTP failures bounded. Railway should use an HTTPS email API.
   connectionTimeout: 10000,
   greetingTimeout: 10000,
   socketTimeout: 15000,
@@ -15,7 +14,7 @@ const transporter = nodemailer.createTransport({
 const sendVerificationEmail = async (email, verificationToken) => {
   const frontendUrl = (
     process.env.FRONTEND_URL || "http://localhost:5173"
-  ).replace(/\\/+$/, "");
+  ).replace(/\/+$/, "");
 
   const verificationUrl = `${frontendUrl}/verify-email?token=${verificationToken}`;
 
@@ -31,7 +30,7 @@ const sendVerificationEmail = async (email, verificationToken) => {
 
   const textContent = `Welcome to CineMate. Verify your email address using this link: ${verificationUrl}`;
 
-  // Resend's HTTPS API avoids Railway's outbound SMTP connectivity restrictions.
+  // Use Resend over HTTPS on Railway; it avoids blocked outbound SMTP.
   if (process.env.RESEND_API_KEY) {
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -57,7 +56,7 @@ const sendVerificationEmail = async (email, verificationToken) => {
     return;
   }
 
-  // Optional existing Brevo HTTPS API fallback.
+  // Keep Brevo available for deployments already configured with it.
   if (process.env.BREVO_API_KEY) {
     if (!process.env.EMAIL_USER) {
       throw new Error("EMAIL_USER is required as the verified Brevo sender address.");
@@ -88,7 +87,19 @@ const sendVerificationEmail = async (email, verificationToken) => {
     return;
   }
 
-  // Local development fallback. Railway should configure RESEND_API_KEY or BREVO_API_KEY.
+  // Never silently fall back to SMTP on Railway; that produces opaque timeouts.
+  if (
+    process.env.RAILWAY_PROJECT_ID ||
+    process.env.RAILWAY_SERVICE_ID ||
+    process.env.RAILWAY_ENVIRONMENT_NAME ||
+    process.env.NODE_ENV === "production"
+  ) {
+    throw new Error(
+      "No HTTPS email provider configured. Add RESEND_API_KEY to the Railway backend service variables and redeploy."
+    );
+  }
+
+  // Local development fallback only.
   await transporter.sendMail({
     from: `"CineMate" <${process.env.EMAIL_USER}>`,
     to: email,
