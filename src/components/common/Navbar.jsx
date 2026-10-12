@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import {
   Bell,
   Bookmark,
+  Film,
+  Heart,
+  Send,
   LogOut,
   Menu,
   Search,
@@ -324,6 +327,17 @@ const Navbar = () => {
                 </Link>
 
                 <Link
+                  to="/profile#telegram"
+                  onClick={() =>
+                    setIsProfileOpen(false)
+                  }
+                  className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-white/60 transition hover:bg-white/5 hover:text-white"
+                >
+                  <Send size={16} />
+                  Telegram
+                </Link>
+
+                <Link
                   to="/watchlist"
                   onClick={() =>
                     setIsProfileOpen(
@@ -334,6 +348,24 @@ const Navbar = () => {
                 >
                   <Bookmark size={16} />
                   Watchlist
+                </Link>
+
+                <Link
+                  to="/watched"
+                  onClick={() => setIsProfileOpen(false)}
+                  className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-white/60 transition hover:bg-white/5 hover:text-white"
+                >
+                  <Film size={16} />
+                  Watched
+                </Link>
+
+                <Link
+                  to="/favorites"
+                  onClick={() => setIsProfileOpen(false)}
+                  className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-white/60 transition hover:bg-white/5 hover:text-white"
+                >
+                  <Heart size={16} />
+                  Favorites
                 </Link>
 
                 <Link
@@ -555,6 +587,17 @@ const Navbar = () => {
                 </span>
               </Link>
             ))}
+
+            {isAuthenticated && (
+              <>
+                <Link to="/watched" onClick={closeMobileMenu} className="group relative overflow-hidden rounded-xl px-4 py-4">
+                  <span className="relative z-10 flex items-center gap-3 text-base font-medium text-white/70 group-hover:text-white"><Film size={17}/> Watched</span>
+                </Link>
+                <Link to="/favorites" onClick={closeMobileMenu} className="group relative overflow-hidden rounded-xl px-4 py-4">
+                  <span className="relative z-10 flex items-center gap-3 text-base font-medium text-white/70 group-hover:text-white"><Heart size={17}/> Favorites</span>
+                </Link>
+              </>
+            )}
 
             {/* Saved Posts */}
 

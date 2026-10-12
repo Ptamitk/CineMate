@@ -1,19 +1,15 @@
 
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
+const TMDB_CACHE_TTL = 60 * 1000;
 const tmdbFetch = async (endpoint) => {
-  const response = await fetch(`${TMDB_BASE_URL}${endpoint}`, {
-    headers: {
-      Authorization: `Bearer ${import.meta.env.VITE_TMDB_ACCESS_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`TMDB API Error: ${response.status}`);
-  }
-
-  return response.json();
+  const cacheKey = "cinemate_tmdb_" + endpoint;
+  try { const cached = sessionStorage.getItem(cacheKey); if (cached) { const parsed = JSON.parse(cached); if (Date.now() - parsed.timestamp < TMDB_CACHE_TTL) return parsed.data; sessionStorage.removeItem(cacheKey); } } catch { /* Ignore session cache failures. */ }
+  const response = await fetch(`${TMDB_BASE_URL}${endpoint}`, { headers: { Authorization: `Bearer ${import.meta.env.VITE_TMDB_ACCESS_TOKEN}`, "Content-Type": "application/json" } });
+  if (!response.ok) throw new Error(`TMDB API Error: ${response.status}`);
+  const data = await response.json();
+  try { sessionStorage.setItem(cacheKey, JSON.stringify({timestamp:Date.now(),data})); } catch { /* Ignore session cache failures. */ }
+  return data;
 };
 
 /* =========================

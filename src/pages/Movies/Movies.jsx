@@ -344,6 +344,7 @@ const Movies = () => {
 
             <ContentGrid
               items={movies}
+              animation="scatter"
               loading={loading}
             />
 

@@ -14,6 +14,8 @@ import VideoSection from "../../components/content/VideoSection";
 import CastCrew from "../../components/content/CastCrew";
 import WatchProviders from "../../components/content/WatchProviders";
 import RecommendationSection from "../../components/content/RecommendationSection";
+import ContentActions from "../../components/content/ContentActions";
+import ReviewsSection from "../../components/content/ReviewsSection";
 
 import { contentService } from "../../services/content/contentService";
 
@@ -423,7 +425,9 @@ const MovieDetails = () => {
 
       </section>
 
-      {/* =========================
+      <ContentActions content={{ id: movie.id, type: "movie", title: movie.title, image: movie.poster_path ? `https://image.tmdb.org/t/p/w780${movie.poster_path}` : "", year: movie.release_date ? movie.release_date.slice(0,4) : "", rating: typeof movie.vote_average === "number" ? movie.vote_average.toFixed(1) : "" }} />
+
+            {/* =========================
           BASIC INFO
       ========================= */}
 
@@ -512,6 +516,8 @@ const MovieDetails = () => {
         <WatchProviders
           providers={watchProviders}
         />
+
+        <ReviewsSection type="movie" id={movie.id} />
 
         {/* =========================
             SIMILAR MOVIES

@@ -352,6 +352,7 @@ const TVShows = () => {
             <ContentGrid
               items={shows}
               loading={loading}
+              animation="depth"
             />
 
           </div>

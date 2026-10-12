@@ -523,6 +523,7 @@ const Search = () => {
 
               <ContentGrid
                 items={results}
+                animation="orbit"
               />
             </>
           ) : hasGenreSearch &&
