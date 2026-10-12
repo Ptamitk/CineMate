@@ -1,4 +1,3 @@
-
 const nodemailer = require("nodemailer");
 
 const transporter = nodemailer.createTransport({
@@ -7,7 +6,7 @@ const transporter = nodemailer.createTransport({
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_APP_PASSWORD,
   },
-  // Keep local SMTP failures bounded. Railway Hobby/Free should use the HTTPS API below.
+  // Keep local SMTP failures bounded. Railway should use an HTTPS email API.
   connectionTimeout: 10000,
   greetingTimeout: 10000,
   socketTimeout: 15000,
@@ -16,7 +15,7 @@ const transporter = nodemailer.createTransport({
 const sendVerificationEmail = async (email, verificationToken) => {
   const frontendUrl = (
     process.env.FRONTEND_URL || "http://localhost:5173"
-  ).replace(/\/+$/, "");
+  ).replace(/\\/+$/, "");
 
   const verificationUrl = `${frontendUrl}/verify-email?token=${verificationToken}`;
 
@@ -30,7 +29,35 @@ const sendVerificationEmail = async (email, verificationToken) => {
     </div>
   `;
 
-  // Railway Free/Hobby blocks outbound SMTP. Prefer Brevo's HTTPS API when configured.
+  const textContent = `Welcome to CineMate. Verify your email address using this link: ${verificationUrl}`;
+
+  // Resend's HTTPS API avoids Railway's outbound SMTP connectivity restrictions.
+  if (process.env.RESEND_API_KEY) {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: process.env.RESEND_FROM_EMAIL || "CineMate <onboarding@resend.dev>",
+        to: [email],
+        subject: "Verify your CineMate email",
+        html: htmlContent,
+        text: textContent,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!response.ok) {
+      const responseBody = (await response.text()).slice(0, 1000);
+      throw new Error(`Resend API request failed (HTTP ${response.status}): ${responseBody}`);
+    }
+
+    return;
+  }
+
+  // Optional existing Brevo HTTPS API fallback.
   if (process.env.BREVO_API_KEY) {
     if (!process.env.EMAIL_USER) {
       throw new Error("EMAIL_USER is required as the verified Brevo sender address.");
@@ -48,7 +75,7 @@ const sendVerificationEmail = async (email, verificationToken) => {
         to: [{ email }],
         subject: "Verify your CineMate email",
         htmlContent,
-        textContent: `Welcome to CineMate. Verify your email address using this link: ${verificationUrl}`,
+        textContent,
       }),
       signal: AbortSignal.timeout(15000),
     });
@@ -61,13 +88,13 @@ const sendVerificationEmail = async (email, verificationToken) => {
     return;
   }
 
-  // Local development fallback. On Railway Free/Hobby, configure BREVO_API_KEY instead.
+  // Local development fallback. Railway should configure RESEND_API_KEY or BREVO_API_KEY.
   await transporter.sendMail({
     from: `"CineMate" <${process.env.EMAIL_USER}>`,
     to: email,
     subject: "Verify your CineMate email",
     html: htmlContent,
-    text: `Welcome to CineMate. Verify your email address using this link: ${verificationUrl}`,
+    text: textContent,
   });
 };
 
