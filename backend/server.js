@@ -2,6 +2,10 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 
+const {
+  buildAllowedOrigins,
+} = require("./middleware/security.middleware");
+
 const connectDB = require("./config/db");
 
 const authRoutes = require("./routes/auth.routes");
@@ -29,8 +33,37 @@ const {
 
 const app = express();
 
-app.use(cors());
-app.use(express.json());
+// Railway terminates TLS at its proxy. Trust only the nearest proxy hop so
+// req.ip can be used consistently by the process-local rate limiter.
+app.set("trust proxy", 1);
+app.disable("x-powered-by");
+
+const allowedOrigins = buildAllowedOrigins({
+  frontendUrl: process.env.CORS_ORIGINS || process.env.FRONTEND_URL,
+});
+
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(self), microphone=(self), geolocation=()");
+  next();
+});
+
+app.use(cors({
+  origin(origin, callback) {
+    // Requests without Origin include health checks and server-to-server calls.
+    callback(null, !origin || allowedOrigins.has(origin));
+  },
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  maxAge: 86400,
+}));
+
+// Bound JSON/form bodies to reduce accidental or abusive memory consumption.
+// Media endpoints use their own Multer limits.
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
@@ -53,6 +86,26 @@ app.get("/", (req, res) => {
 
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" });
+});
+
+// Return consistent JSON errors without exposing stack traces or internals.
+app.use((error, req, res, next) => {
+  if (res.headersSent) return next(error);
+
+  if (error.type === "entity.too.large") {
+    return res.status(413).json({ message: "Request body is too large." });
+  }
+
+  if (error.type === "entity.parse.failed") {
+    return res.status(400).json({ message: "Request body contains invalid JSON." });
+  }
+
+  if (error.name === "MulterError" && error.code === "LIMIT_FILE_SIZE") {
+    return res.status(413).json({ message: "Uploaded file exceeds the allowed size." });
+  }
+
+  console.error("Unhandled API error:", error.message);
+  return res.status(500).json({ message: "An unexpected server error occurred." });
 });
 
 const PORT = process.env.PORT || 5000;
