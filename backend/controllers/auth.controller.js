@@ -1,5 +1,5 @@
-
 const crypto = require("crypto");
+const jwt = require("jsonwebtoken");
 
 const User = require("../models/user.model");
 
@@ -11,6 +11,7 @@ const {
 
 const {
   sendVerificationEmail,
+  sendPasswordResetEmail,
 } = require("../services/email.service");
 
 const signup = async (req, res) => {
@@ -203,6 +204,13 @@ const login = async (req, res) => {
       });
     }
 
+    if (!user.password) {
+      return res.status(401).json({
+        message:
+          "Invalid email or password.",
+      });
+    }
+
     const isPasswordValid =
       await comparePassword(
         password,
@@ -243,6 +251,321 @@ const login = async (req, res) => {
     return res.status(500).json({
       message:
         "Something went wrong during login.",
+    });
+  }
+};
+
+const googleLogin = (req, res) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI;
+
+  if (!clientId || !redirectUri) {
+    return res.status(500).json({
+      message:
+        "Google authentication is not configured on the server.",
+    });
+  }
+
+  const state = jwt.sign(
+    { purpose: "google-oauth" },
+    process.env.JWT_SECRET,
+    { expiresIn: "10m" }
+  );
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: "openid email profile",
+    access_type: "offline",
+    prompt: "select_account",
+    state,
+  });
+
+  return res.redirect(
+    "https://accounts.google.com/o/oauth2/v2/auth?" +
+      params.toString()
+  );
+};
+
+const googleCallback = async (req, res) => {
+  const frontendUrl =
+    process.env.FRONTEND_URL ||
+    "http://localhost:5173";
+
+  try {
+    const { code, state } = req.query;
+
+    if (!code || !state) {
+      return res.redirect(
+        frontendUrl +
+          "/login?google_error=" +
+          encodeURIComponent("Google sign-in was cancelled or invalid.")
+      );
+    }
+
+    const statePayload = jwt.verify(
+      state,
+      process.env.JWT_SECRET
+    );
+
+    if (statePayload.purpose !== "google-oauth") {
+      throw new Error("Invalid Google OAuth state.");
+    }
+
+    const tokenResponse = await fetch(
+      "https://oauth2.googleapis.com/token",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          code,
+          client_id: process.env.GOOGLE_CLIENT_ID,
+          client_secret: process.env.GOOGLE_CLIENT_SECRET,
+          redirect_uri: process.env.GOOGLE_REDIRECT_URI,
+          grant_type: "authorization_code",
+        }),
+      }
+    );
+
+    const tokenData = await tokenResponse.json();
+
+    if (!tokenResponse.ok || !tokenData.access_token) {
+      throw new Error(
+        tokenData.error_description ||
+          "Unable to exchange Google authorization code."
+      );
+    }
+
+    const profileResponse = await fetch(
+      "https://www.googleapis.com/oauth2/v3/userinfo",
+      {
+        headers: {
+          Authorization:
+            "Bearer " + tokenData.access_token,
+        },
+      }
+    );
+
+    const profile = await profileResponse.json();
+
+    if (
+      !profileResponse.ok ||
+      !profile.email ||
+      profile.email_verified !== true
+    ) {
+      throw new Error(
+        "Google account email could not be verified."
+      );
+    }
+
+    const normalizedEmail =
+      profile.email.trim().toLowerCase();
+
+    // Google provides the account's display name and profile photo.
+    // If Google has no photo, give the CineMate account a stable
+    // random-style avatar based on the Google account ID.
+    const googleName =
+      profile.name ||
+      [profile.given_name, profile.family_name]
+        .filter(Boolean)
+        .join(" ") ||
+      normalizedEmail.split("@")[0];
+
+    const googleAvatar =
+      profile.picture ||
+      "https://api.dicebear.com/9.x/adventurer/svg?seed=" +
+        encodeURIComponent(profile.sub);
+
+    let user = await User.findOne({
+      $or: [
+        { googleId: profile.sub },
+        { email: normalizedEmail },
+      ],
+    });
+
+    if (!user) {
+      user = await User.create({
+        name: googleName,
+        email: normalizedEmail,
+        password: null,
+        googleId: profile.sub,
+        isEmailVerified: true,
+        profilePicture: googleAvatar,
+      });
+    } else {
+      user.googleId = profile.sub;
+      user.isEmailVerified = true;
+
+      // Never overwrite a CineMate-uploaded photo.
+      if (!user.profilePicture) {
+        user.profilePicture = googleAvatar;
+      }
+
+      // If the account was previously created through Google with
+      // a fallback name, use the current Google account name.
+      if (
+        user.name === "CineMate Test" ||
+        !user.name?.trim()
+      ) {
+        user.name = googleName;
+      }
+
+      await user.save();
+    }
+
+    const authToken = generateToken(
+      user._id.toString()
+    );
+
+    return res.redirect(
+      frontendUrl +
+        "/oauth-callback?token=" +
+        encodeURIComponent(authToken)
+    );
+  } catch (error) {
+    console.error(
+      "Google OAuth Error:",
+      error
+    );
+
+    return res.redirect(
+      frontendUrl +
+        "/login?google_error=" +
+        encodeURIComponent(
+          "Google sign-in failed. Please try again."
+        )
+    );
+  }
+};
+
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email || !email.trim()) {
+      return res.status(400).json({
+        message: "Email is required.",
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const user = await User.findOne({
+      email: normalizedEmail,
+    });
+
+    const successMessage =
+      "If an account with that email exists, a password reset link has been sent.";
+
+    if (!user) {
+      return res.status(200).json({
+        message: successMessage,
+      });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString("hex");
+
+    user.passwordResetToken = resetToken;
+    user.passwordResetExpires = new Date(
+      Date.now() + 15 * 60 * 1000
+    );
+
+    await user.save();
+
+    try {
+      await sendPasswordResetEmail(
+        user.email,
+        resetToken
+      );
+    } catch (emailError) {
+      user.passwordResetToken = null;
+      user.passwordResetExpires = null;
+      await user.save();
+
+      console.error(
+        "Password Reset Email Error:",
+        emailError
+      );
+
+      return res.status(500).json({
+        message:
+          "Unable to send password reset email. Please try again.",
+      });
+    }
+
+    return res.status(200).json({
+      message: successMessage,
+    });
+  } catch (error) {
+    console.error(
+      "Forgot Password Error:",
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        "Something went wrong while requesting a password reset.",
+    });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const {
+      token,
+      password,
+    } = req.body;
+
+    if (!token || !password) {
+      return res.status(400).json({
+        message:
+          "Reset token and new password are required.",
+      });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({
+        message:
+          "Password must be at least 8 characters.",
+      });
+    }
+
+    const user = await User.findOne({
+      passwordResetToken: token,
+      passwordResetExpires: {
+        $gt: new Date(),
+      },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        message:
+          "Password reset link is invalid or expired.",
+      });
+    }
+
+    user.password = await hashPassword(password);
+    user.passwordResetToken = null;
+    user.passwordResetExpires = null;
+
+    await user.save();
+
+    return res.status(200).json({
+      message:
+        "Password reset successfully. You can now login.",
+    });
+  } catch (error) {
+    console.error(
+      "Reset Password Error:",
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        "Something went wrong while resetting your password.",
     });
   }
 };
@@ -289,6 +612,9 @@ module.exports = {
   signup,
   verifyEmail,
   login,
+  googleLogin,
+  googleCallback,
+  forgotPassword,
+  resetPassword,
   getMe,
 };
-
